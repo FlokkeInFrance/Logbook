@@ -1,0 +1,56 @@
+{
+  "yes": "oui",
+  "no": "non",
+  "cancel": "annuler",
+  "date": "date",
+  "departure": "départ",
+  "arrival": "arrivée",
+  "start": "démarrer",
+  "boom": "bome",
+  "mast": "mât",
+  "mainSail": "grand voile",
+  "genoa": "genois",
+  "gennacker": "gennacker",
+  "code0": "Code 0",
+  "furl": "rouler",
+  "drop": "affaler",
+  "furled": "roulé",
+  "dropped": "affalé",
+  "notFound": "pas trouvé",
+  "fileNotFound": "fichier non trouvé",
+  "maneuver": "manoeuvre",
+  "emergency": "urgence",
+  "distress": "détresse",
+  "mob": "MOB",
+  "cloud": "nuage",
+  "clouds": "nuages",
+  "cavoc": "bonne visibilité",
+  "fog": "brume",
+  "cumuloN": "cumulonimbus",
+  "cirrus": "cirrus",
+  "stratus": "stratus",
+  "cumulus": "cumulus",
+  "thunderstorm": "orage",
+  "storm": "tempête",
+  "noWind": "pétole",
+  "lightWind": "légère brise",
+  "gale": "coup de vent",
+  "strongGale": "fort coup de vent",
+  "wind": "vent",
+  "strong": "fort",
+  "light": "leger",
+  "gusts": "rafales",
+  "turbulence": "turbulence",
+  "lightRain": "bruine",
+  "rain": "pluie",
+  "shower": "averse"
+  "sheetIn": "border"
+  "sheetOut": "choquer"
+  "tack": "virer"
+  "gybe": "empanner"
+  "takeInTow": "remorquer"
+  "received": "reçu"
+  "coordinates": "coordonnées"
+  "startNLog": "nouveau Log"
+  "openLastLog": "dernier Log"
+}
