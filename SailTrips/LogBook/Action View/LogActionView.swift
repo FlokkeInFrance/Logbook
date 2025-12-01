@@ -22,6 +22,7 @@
 //  - 4-per-line grid for situation-dependent actions
 //
 
+
 import SwiftUI
 import SwiftData
 
@@ -38,8 +39,12 @@ struct LogActionView: View {
 
     private let registry = ActionRegistry.makeDefault()
 
-    // situations come from registry:
-    private var situations: [SituationDefinition] { registry.allSituations}
+    // situations come from registry (static map / helper in your extension)
+    private var situations: [SituationDefinition] {
+        ActionRegistry.allSituations
+        // If you named it differently, e.g. `allSituationDefinitions`,
+        // replace with that.
+    }
 
     // MARK: - State
 
@@ -53,23 +58,19 @@ struct LogActionView: View {
     // MARK: - Init
 
     init(
-        //registry: ActionRegistry,
         instances: Instances,
-        situations: [SituationDefinition],
         initialSituationID: SituationID? = nil,
         showBanner: @escaping (String) -> Void,
         openDangerSheet: @escaping (ActionVariant) -> Void,
         onClose: @escaping () -> Void
     ) {
-        //self.registry = registry
         self._instances = Bindable(wrappedValue: instances)
-        self.situations = situations
         self.showBanner = showBanner
         self.openDangerSheet = openDangerSheet
         self.onClose = onClose
 
         // Default to provided initial ID, or first situation, or S1.
-        let fallbackID: SituationID = situations.first?.id ?? .s1PreparingTrip
+        let fallbackID: SituationID = ActionRegistry.allSituations.first?.id ?? .s1PreparingTrip
         _currentSituationID = State(initialValue: initialSituationID ?? fallbackID)
     }
 
@@ -124,6 +125,39 @@ struct LogActionView: View {
         "AF16", // Goto next WPT
         "AF17"  // Extra rigging
     ]
+
+    // MARK: - Fixed AF groups (layout)
+
+    /// First line: emergency actions (bigger, red buttons)
+    private let emergencyTags: [String] = [
+        "E1", "E2", "E3", "E4"
+    ]
+
+    /// Second line: checklists & incidents
+    private let checklistIncidentTags: [String] = [
+        "AF8", "AF7", "AF4"
+    ]
+
+    /// Third line: motor
+    private let motorTags: [String] = [
+        "AF2", "AF2R", "AF21"
+    ]
+
+    /// Fourth line: navigation
+    private let navigationTags: [String] = [
+        "AF12", "AF14", "AF11", "AF16"
+    ]
+
+    /// Fifth line: environment
+    private let environmentTags: [String] = [
+        "AF3", "AF9", "AF10", "AF1"
+    ]
+
+    /// Sixth line: other logs
+    private let otherLogTags: [String] = [
+        "AF5", "AF6", "AF15"
+    ]
+
 
     /// Grid layout: 4 items per row.
     private var gridColumns: [GridItem] {
@@ -184,46 +218,105 @@ struct LogActionView: View {
     // MARK: - Fixed AF bar
 
     private var topFixedAFBar: some View {
-        let afVariants = visibleAFVariants()
+        let ctx = actionContext
 
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(afVariants) { variant in
-                    Button {
-                        runAction(variant)
-                    } label: {
-                        HStack(spacing: 4) {
-                            if let systemImage = variant.systemImage {
-                                Image(systemName: systemImage)
-                                    .font(.headline)
-                            }
-                            Text(variant.title)
-                                .font(.caption)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(
-                            Capsule()
-                                .fill(variant.isEmphasised
-                                      ? Color.accentColor.opacity(0.2)
-                                      : Color.secondary.opacity(0.12))
-                        )
-                        .overlay(
-                            Capsule()
-                                .stroke(variant.isEmphasised
-                                        ? Color.accentColor
-                                        : Color.secondary.opacity(0.5),
-                                        lineWidth: variant.isEmphasised ? 1.5 : 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
+        func variants(for tags: [String]) -> [ActionVariant] {
+            tags.compactMap { registry.variant(for: $0) }
+                .filter { variant in
+                    let runtime = ActionRuntime(context: ctx, variant: variant)
+                    return variant.isVisible(runtime)
                 }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
         }
-        .background(Color(.secondarySystemBackground))
+
+        let emergency    = variants(for: emergencyTags)
+        let checklistInc = variants(for: checklistIncidentTags)
+        let motor        = variants(for: motorTags)
+        let navigation   = variants(for: navigationTags)
+        let environment  = variants(for: environmentTags)
+        let otherLogs    = variants(for: otherLogTags)
+
+        return VStack(spacing: 6) {
+
+            // 1. Emergencies row – red, bigger, spread across the line
+            if !emergency.isEmpty {
+                HStack(spacing: 8) {
+                    ForEach(emergency) { variant in
+                        Button {
+                            runAction(variant)
+                        } label: {
+                            HStack(spacing: 4) {
+                                if let systemImage = variant.systemImage {
+                                    Image(systemName: systemImage)
+                                        .font(.headline)
+                                }
+                                Text(shortLabel(for: variant))
+                                    .font(.subheadline)
+                                    .fontWeight(.bold)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 34)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .fill(Color.red)
+                            )
+                            .foregroundColor(.white)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 4)
+            }
+
+
+
+            // 2–6. Remaining rows
+            if !checklistInc.isEmpty { row(checklistInc) }
+            if !motor.isEmpty        { row(motor) }
+            if !navigation.isEmpty   { row(navigation) }
+            if !environment.isEmpty  { row(environment) }
+            if !otherLogs.isEmpty    { row(otherLogs) }
+        }
+        .padding(.bottom, 4)
+    }
+    
+    // Helper to draw the “normal” rows (smaller buttons)
+    func row(_ variants: [ActionVariant]) -> some View {
+        HStack(spacing: 6) {
+            ForEach(variants) { variant in
+                Button {
+                    runAction(variant)
+                } label: {
+                    HStack(spacing: 3) {
+                        if let systemImage = variant.systemImage {
+                            Image(systemName: systemImage)
+                                .font(.caption)
+                        }
+                        Text(shortLabel(for: variant))
+                            .font(.caption2)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule()
+                            .fill(Color(.secondarySystemBackground))
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8)
+    }
+
+    /// Compact label (max 3 letters) for AF buttons, when no `systemImage` is set.
+    private func shortLabel(for variant: ActionVariant) -> LocalizedStringKey {
+        variant.title
     }
 
     // MARK: - Situation-dependent action grid
@@ -371,3 +464,15 @@ struct LogActionView: View {
         }
     }
 }
+
+// ActionRegistry+Situation.swift
+
+extension ActionRegistry {
+    static var allSituations: [SituationDefinition] {
+        // Flatten the static map and sort by SituationID raw value
+        situationMap
+            .values
+            .sorted { $0.id.rawValue < $1.id.rawValue }
+    }
+}
+

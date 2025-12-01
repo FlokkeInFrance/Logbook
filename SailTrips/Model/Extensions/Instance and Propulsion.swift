@@ -30,7 +30,6 @@ extension Instances {
         // down, furled, lowered or outOfOrder.
         let nonPropulsiveStates: Set<SailState> = [
             .down,
-            .furled,
             .lowered,
             .outOfOrder
         ]
@@ -58,7 +57,7 @@ extension Instances {
         case (false, true):
             return .motor
         case (true, false):
-            return .sails
+            return .sail
         case (true, true):
             return .motorsail
         }

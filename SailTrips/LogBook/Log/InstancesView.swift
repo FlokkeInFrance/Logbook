@@ -11,27 +11,21 @@ import SwiftData
 
 // MARK: - InstancesView
 struct InstancesView: View {
-    //New code
     @Environment(\.modelContext) private var context
 
     let settings: LogbookSettings
     @Bindable var instances: Instances
 
-    // Feeds odometer from GPS
     @StateObject private var position = PositionUpdater()
     @State private var tracker: OdometerTracker? = nil
 
-    // Stack for deferred logs
     @StateObject private var logQueue = LogQueue()
 
-    // For pickers
     @Query(sort: \Location.Name) private var allLocations: [Location]
 
-    // Helpers
     private var writer: LogWriter { .init(context: context) }
 
     var body: some View {
-        //have to correct this
         Form {
             Section(header: Text("Mooring & Status")) {
                 Picker("Mooring", selection: $instances.mooringUsed) {
@@ -64,26 +58,30 @@ struct InstancesView: View {
                     handlePropulsionChange(old: old, newVal: newVal)
                 }
 
-                Picker("Autopilot", selection: $instances.autopilot) {
+                // 🔧 FIX: bind to autopilotMode instead of autopilot
+                Picker("Autopilot", selection: $instances.autopilotMode) {
                     ForEach(Autopilot.allCases) { Text($0.rawValue).tag($0) }
+                    // or: Text($0.label)
                 }
-                .onChange(of: instances.autopilot) { old, newVal in
+                .onChange(of: instances.autopilotMode) { old, newVal in
                     handleAutopilotChange(old: old, newVal: newVal)
                 }
 
-                if instances.autopilot != .off {
+                // 🔧 FIX: use autopilotMode here as well
+                if instances.autopilotMode != .off {
                     BearingView(label: "AP Direction", inBearing: $instances.autopilotDirection)
                         .onChange(of: instances.autopilotDirection) { _, _ in
-                            // append to last autopilot log line when it was immediate
                             logQueue.enqueue(key: "autopilotDir", text: ", AP dir: \(instances.autopilotDirection)") { log in
-                                // no dedicated field on Logs except maybe magCourse; keep as text only
+                                // Still just text for now; Logs has no dedicated field
                             }
                         }
                 }
             }
 
             Section(header: Text("Waypoints & Course")) {
-                Picker("Next WPT", selection: Binding(get: { instances.nextWPT?.id }, set: { id in
+                Picker("Next WPT", selection: Binding(get: {
+                    instances.nextWPT?.id
+                }, set: { id in
                     if let id = id, let loc = allLocations.first(where: { $0.id == id }) {
                         instances.nextWPT = loc
                     } else {
@@ -91,11 +89,17 @@ struct InstancesView: View {
                     }
                 })) {
                     Text("— None —").tag(UUID?.none)
-                    ForEach(allLocations) { loc in Text(loc.Name).tag(Optional(loc.id)) }
+                    ForEach(allLocations) { loc in
+                        Text(loc.Name).tag(Optional(loc.id))
+                    }
                 }
                 .onChange(of: instances.nextWPT) { _, newVal in
                     if let loc = newVal, let trip = instances.currentTrip {
-                        writer.writeNow(trip: trip, instances: instances, stack: logQueue, flushStackFirst: false, header: "Next WPT is now \(loc.Name)")
+                        writer.writeNow(trip: trip,
+                                        instances: instances,
+                                        stack: logQueue,
+                                        flushStackFirst: false,
+                                        header: "Next WPT is now \(loc.Name)")
                     } else {
                         logQueue.enqueue(key: "nextWPT", text: "Next WPT cleared")
                     }
@@ -103,7 +107,11 @@ struct InstancesView: View {
 
                 BearingView(label: "COG", inBearing: $instances.COG)
                     .onChange(of: instances.COG) { _, newVal in
-                        enqueueDelta(key: "COG", label: "New ground course is", value: newVal) { log in log.COG = newVal }
+                        enqueueDelta(key: "COG",
+                                     label: "New ground course is",
+                                     value: newVal) { log in
+                            log.COG = newVal
+                        }
                     }
 
                 BearingView(label: "Bearing to WPT", inBearing: $instances.bearingToNextWPT)
@@ -111,9 +119,15 @@ struct InstancesView: View {
                         logQueue.enqueue(key: "BTW", text: "New course to WPT is \(newVal)°")
                     }
 
-                NumberField(label: "SOG (kn)", inData: Binding(get: { instances.SOG }, set: { instances.SOG = $0 }))
+                NumberField(label: "SOG (kn)",
+                            inData: Binding(get: { instances.SOG },
+                                            set: { instances.SOG = $0 }))
                     .onChange(of: instances.SOG) { _, newVal in
-                        enqueueDelta(key: "SOG", label: "Speed over ground is", value: newVal) { log in log.SOG = newVal }
+                        enqueueDelta(key: "SOG",
+                                     label: "Speed over ground is",
+                                     value: newVal) { log in
+                            log.SOG = newVal
+                        }
                     }
             }
 
@@ -141,49 +155,83 @@ struct InstancesView: View {
 
             Section(header: Text("Weather (Beaufort & Sky)")) {
                 IntField(label: "TWS", inData: $instances.TWS)
-                    .onChange(of: instances.TWS) { old, newVal in
-                        enqueueDelta(key: "TWS", label: "Wind changed to", value: newVal) { log in log.TWS = newVal }
+                    .onChange(of: instances.TWS) { _, newVal in
+                        enqueueDelta(key: "TWS",
+                                     label: "Wind changed to",
+                                     value: newVal) { log in
+                            log.TWS = newVal
+                        }
                     }
+
                 BearingView(label: "TWD", inBearing: $instances.TWD)
                     .onChange(of: instances.TWD) { _, newVal in
-                        enqueueDelta(key: "TWD", label: "Wind shifted to", value: newVal) { log in log.TWD = newVal }
+                        enqueueDelta(key: "TWD",
+                                     label: "Wind shifted to",
+                                     value: newVal) { log in
+                            log.TWD = newVal
+                        }
                     }
+
                 IntField(label: "Beaufort", inData: $instances.windDescription)
-                    .onChange(of: instances.windDescription) { old, newVal in
-                        if let trip = instances.currentTrip { writer.writeNow(trip: trip, instances: instances, stack: logQueue, flushStackFirst: false, header: "Wind changed to \(newVal) Bft") }
+                    .onChange(of: instances.windDescription) { _, newVal in
+                        if let trip = instances.currentTrip {
+                            writer.writeNow(trip: trip,
+                                            instances: instances,
+                                            stack: logQueue,
+                                            flushStackFirst: false,
+                                            header: "Wind changed to \(newVal) Bft")
+                        }
                     }
+
                 IntField(label: "Cloudiness (oktas)", inData: $instances.cloudiness)
                     .onChange(of: instances.cloudiness) { _, newVal in
-                        logQueue.enqueue(key: "cloudiness", text: "Actual cloud cover: \(newVal)") { log in log.cloudCover = String(newVal) }
+                        logQueue.enqueue(key: "cloudiness",
+                                         text: "Actual cloud cover: \(newVal)") { log in
+                            log.cloudCover = String(newVal)
+                        }
                     }
+
                 TextField("Visibility", text: $instances.visibility)
-                    .onSubmit { if let trip = instances.currentTrip { writer.writeNow(trip: trip, instances: instances, stack: logQueue, flushStackFirst: false, header: "Visibility is now: \(instances.visibility)") } }
+                    .onSubmit {
+                        if let trip = instances.currentTrip {
+                            writer.writeNow(trip: trip,
+                                            instances: instances,
+                                            stack: logQueue,
+                                            flushStackFirst: false,
+                                            header: "Visibility is now: \(instances.visibility)")
+                        }
+                    }
+
                 Toggle("Cumulonimbus nearby", isOn: $instances.presenceOfCn)
                     .onChange(of: instances.presenceOfCn) { _, newVal in
                         if newVal, let trip = instances.currentTrip {
-                            writer.writeNow(trip: trip, instances: instances, stack: logQueue, flushStackFirst: false, header: "There are Cumulonimbus clouds visible nearby")
+                            writer.writeNow(trip: trip,
+                                            instances: instances,
+                                            stack: logQueue,
+                                            flushStackFirst: false,
+                                            header: "There are Cumulonimbus clouds visible nearby")
                         }
                     }
             }
 
             if !logQueue.items.isEmpty {
                 Section {
-                    Button(role: .none) {
+                    Button {
                         flushStack()
                     } label: {
-                        Label("Log modifications (\(logQueue.items.count))", systemImage: "doc.text")
+                        Label("Log modifications (\(logQueue.items.count))",
+                              systemImage: "doc.text")
                     }
                 }
             }
         }
         .navigationTitle("Instances")
         .onAppear {
-            // Position autoload setup
-            position.setupAutoloadSettings(autoUpdate: settings.autoUpdatePosition, period: settings.autoUpdatePeriodicity)
+            position.setupAutoloadSettings(autoUpdate: settings.autoUpdatePosition,
+                                           period: settings.autoUpdatePeriodicity)
             if settings.autoReadposition { position.requestOnce() }
             if settings.autoUpdatePosition { position.startUpdating() }
 
-            // Tracker
             let t = OdometerTracker(pos: position, instances: instances)
             t.start()
             tracker = t
@@ -199,7 +247,12 @@ struct InstancesView: View {
     }
 
     // MARK: - Enqueue helpers
-    private func enqueueDelta<T: CustomStringConvertible>(key: String, label: String, value: T, apply: @escaping (inout Logs) -> Void) {
+    private func enqueueDelta<T: CustomStringConvertible>(
+        key: String,
+        label: String,
+        value: T,
+        apply: @escaping (inout Logs) -> Void
+    ) {
         logQueue.enqueue(key: key, text: "\(label) \(value)", apply: apply)
     }
 
@@ -207,6 +260,9 @@ struct InstancesView: View {
         guard let trip = instances.currentTrip else { return }
         writer.flush(trip: trip, instances: instances, stack: logQueue)
     }
+
+    // … handlers (handleMooringChange, handleNavStatusChange, etc.) unchanged …
+
 
     // MARK: - Handlers implementing your logging rules (A…H)
 
@@ -362,7 +418,7 @@ struct SailStateRow: View {
     private var allowedStates: [SailState] {
         var list: [SailState] = [.lowered, .down, .full]
         if sail.reducedWithReefs { list += [.reefed, .reef1, .reef2, .reef3, .lowered] }
-        if sail.reducedWithFurling { list += [.lowered, .lightFurled, .halfFurled, .tightFurled] }
+        if sail.reducedWithFurling { list += [.lowered, .vlightFurled, .lightFurled, .halfFurled, .tightFurled] }
         if sail.canBeOutpoled { list += [.outpoled] }
         // Deduplicate while preserving order
         var seen = Set<String>()

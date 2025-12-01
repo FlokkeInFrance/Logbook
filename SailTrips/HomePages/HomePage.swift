@@ -201,15 +201,24 @@ struct HomePage: View {
                 case .tripCompanion: TripCompanionView(instances: instances!)
                 case .parameters: SettingsView()
                 case .actionLog:
-                        if let settings = settings.first {
-                            if let instances = try? modelContext.fetch(FetchDescriptor<Instances>()).first {
-                                LogActionView(instances: instances, settings: settings)
-                            } else {
-                                Text("No active Instances / Boat selected.")
+                    if let instances = instances {
+                        LogActionView(
+                            instances: instances,
+                            showBanner: { _ in
+                                // For now, no external banner – LogActionView already shows its own local banner.
+                            },
+                            openDangerSheet: { _ in
+                                // Later: set some @State to present a danger sheet.
+                            },
+                            onClose: {
+                                // Pop ActionLog from NavigationStack
+                                navPath.path.removeLast()
                             }
-                        } else {
-                            Text("No Logbook settings found.")
-                        }
+                        )
+                    } else {
+                        Text("No active Instances / Boat selected.")
+                    }
+
                     
                 default : fatalError("Unhandled Navigation Destination")
                 }
