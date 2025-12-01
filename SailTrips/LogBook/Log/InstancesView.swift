@@ -11,6 +11,7 @@ import SwiftData
 
 // MARK: - InstancesView
 struct InstancesView: View {
+    //New code
     @Environment(\.modelContext) private var context
 
     let settings: LogbookSettings
