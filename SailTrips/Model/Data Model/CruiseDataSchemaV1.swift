@@ -525,7 +525,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var pointOfSail: String = ""
         var starboardTack: Bool = true
         var propulsion: PropulsionTool = PropulsionTool.none
-        var steering: Steering
+        var steering: Steering = Steering.byHand
         init (id: UUID=UUID(), trip: Trip){
             self.id = id
             self.trip = trip

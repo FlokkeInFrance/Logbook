@@ -31,6 +31,7 @@ struct InstancesView: View {
     private var writer: LogWriter { .init(context: context) }
 
     var body: some View {
+        //have to correct this
         Form {
             Section(header: Text("Mooring & Status")) {
                 Picker("Mooring", selection: $instances.mooringUsed) {
