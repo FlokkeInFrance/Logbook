@@ -31,6 +31,7 @@ struct BoatDetailsView: View {
     @State private var newMotor = Motor(id: UUID())
     @State private var isValidAxiomIP: Bool = true
     @State private var isValidNMEAIP: Bool = true
+    @State private var isRigSheetPresented: Bool = false
 
     @FocusState var focus: Bool
 
@@ -72,7 +73,7 @@ struct BoatDetailsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-
+                
                 TextField("Color of the hull", text: $aBoat.hullColor)
                 if aBoat.boatType == .sailboat || aBoat.boatType == .motorsailer {
                     TextField("Rig Type", text: $aBoat.otherType).autocorrectionDisabled()
@@ -87,7 +88,7 @@ struct BoatDetailsView: View {
                         }
                     }
                     VStack(alignment: .leading) {
-                        ForEach(aBoat.sails.prefix(10), id: \ .id) { sail in
+                        ForEach(aBoat.sails.prefix(10), id: \.id) { sail in
                             Text(sail.nameOfSail)
                         }
                         if aBoat.sails.count > 10 {
@@ -95,7 +96,7 @@ struct BoatDetailsView: View {
                         }
                     }
                 }
-
+                
                 // MOTORS LIST & MODIFIER
                 HStack {
                     Text("Motors")
@@ -108,7 +109,8 @@ struct BoatDetailsView: View {
                     }
                 }
                 VStack(alignment: .leading) {
-                    ForEach(aBoat.motors, id: \ .id) { motor in
+                  
+                    ForEach(aBoat.motors, id: \.id) { motor in
                         HStack {
                             Text(motor.use.label)
                             Spacer()
@@ -117,8 +119,33 @@ struct BoatDetailsView: View {
                     }
                 }
                 
-                //RIG LIST &MODIFIER
-                //TODO : implement 
+                //RIG LIST & MODIFIER
+                HStack {
+                    Text("Extra rigging")
+                    Spacer()
+                    Button("Modify") {
+                        isRigSheetPresented = true
+                    }
+                }
+                VStack(alignment: .leading) {
+                    let rigs = aBoat.extraRiggingItems
+                    if rigs.isEmpty {
+                        Text("No extra rigging defined")
+                            .italic()
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(rigs, id: \.id) { item in
+                            if let kind = item.extraRiggingKind {
+                                // Standard item from the ExtraRigging enum
+                                Text(kind.defaultName)
+                            } else {
+                                // Custom extra-rig item, show its name
+                                Text(item.name)
+                            }
+                        }
+                    }
+                }
+                
             }
 
             Section(header: Text("Dimensions")) {
@@ -231,6 +258,13 @@ struct BoatDetailsView: View {
             MotorModifyView(
                 motors: $aBoat.motors,
                 isPresented: $isMotorSheetPresented
+            )
+        }
+        .sheet(isPresented: $isRigSheetPresented) {
+            RigModifyView(
+                boat: aBoat,
+                inventory: $aBoat.inventory,
+                isPresented: $isRigSheetPresented
             )
         }
     }
@@ -436,5 +470,167 @@ struct MotorModifyView: View {
 
     private func deleteSelected() {
         if let idx = selectedIndex { motors.remove(at: idx); selectedIndex = nil }
+    }
+}
+
+// MARK: - RigModifyView
+// MARK: - RigModifyView
+
+struct RigModifyView: View {
+    let boat: Boat
+    @Binding var inventory: [CruiseDataSchemaV1.InventoryItem]
+    @Binding var isPresented: Bool
+
+    @State private var customItemEnabled: Bool = false
+    @State private var customItemName: String = ""
+
+    @Environment(\.dismiss) private var dismiss
+
+    /// All standard extra-rig items (we don’t use `.other` as a standard entry)
+    private var standardRigs: [ExtraRigging] {
+        ExtraRigging.allCases.filter { $0 != .other }
+    }
+
+    /// Existing “custom” extra-rig item (type == .extraRigging, kind == nil)
+    private var existingCustomItem: CruiseDataSchemaV1.InventoryItem? {
+        inventory.first {
+            $0.type == .extraRigging && $0.extraRiggingKind == nil && $0.boat === boat
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Standard equipment") {
+                    ForEach(standardRigs, id: \.id) { rig in
+                        Toggle(isOn: binding(for: rig)) {
+                            Text(rig.defaultName)
+                        }
+                    }
+                }
+
+                Section("Custom item") {
+                    Toggle("Track a personal item", isOn: $customItemEnabled)
+                    if customItemEnabled {
+                        TextField("Description (e.g. Parasailor)", text: $customItemName)
+                            .autocorrectionDisabled()
+                    }
+                    Text("When you uncheck this, the custom item disappears and has to be added again if needed.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle("Extra rigging")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        isPresented = false
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        applyCustomItem()
+                        isPresented = false
+                    }
+                }
+            }
+            .onAppear {
+                // Initialise custom item UI from current inventory
+                if let custom = existingCustomItem {
+                    customItemEnabled = true
+                    customItemName = custom.name
+                } else {
+                    customItemEnabled = false
+                    customItemName = ""
+                }
+            }
+        }
+    }
+
+    // MARK: - Standard rig helpers
+
+    private func hasRig(_ rig: ExtraRigging) -> Bool {
+        inventory.contains {
+            $0.type == .extraRigging &&
+            $0.extraRiggingKind == rig &&
+            $0.boat === boat
+        }
+    }
+
+    private func addRigIfMissing(_ rig: ExtraRigging) {
+        guard !hasRig(rig) else { return }
+
+        let item = CruiseDataSchemaV1.InventoryItem(
+            boat: boat,
+            name: rig.defaultName,
+            category: .rigging,
+            subcategory: "extra rigging",
+            type: .extraRigging,
+            dateOfEntry: .now,
+            storageSite: "",
+            tracksUsageInLogbook: true,
+            extraRiggingKind: rig
+        )
+        inventory.append(item)
+    }
+
+    private func removeRig(_ rig: ExtraRigging) {
+        inventory.removeAll {
+            $0.type == .extraRigging &&
+            $0.extraRiggingKind == rig &&
+            $0.boat === boat
+        }
+    }
+
+    private func binding(for rig: ExtraRigging) -> Binding<Bool> {
+        Binding(
+            get: { hasRig(rig) },
+            set: { isOn in
+                if isOn {
+                    addRigIfMissing(rig)
+                } else {
+                    removeRig(rig)
+                }
+            }
+        )
+    }
+
+    // MARK: - Custom item helpers
+
+    private func applyCustomItem() {
+        let trimmed = customItemName.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if customItemEnabled, !trimmed.isEmpty {
+            if let existing = existingCustomItem {
+                // Update existing
+                existing.name = trimmed
+                existing.category = .rigging
+                existing.subcategory = "extra rigging"
+                existing.type = .extraRigging
+                existing.tracksUsageInLogbook = true
+                existing.boat = boat
+            } else {
+                // Create new
+                let item = CruiseDataSchemaV1.InventoryItem(
+                    boat: boat,
+                    name: trimmed,
+                    category: .rigging,
+                    subcategory: "extra rigging",
+                    type: .extraRigging,
+                    dateOfEntry: .now,
+                    storageSite: "",
+                    tracksUsageInLogbook: true,
+                    extraRiggingKind: nil
+                )
+                inventory.append(item)
+            }
+        } else {
+            // Toggle off or empty name ⇒ remove any custom item
+            if let existing = existingCustomItem {
+                if let idx = inventory.firstIndex(where: { $0.id == existing.id }) {
+                    inventory.remove(at: idx)
+                }
+            }
+        }
     }
 }

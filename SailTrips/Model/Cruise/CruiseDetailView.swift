@@ -122,7 +122,7 @@ struct CruiseDetailView: View {
                 }
                 
                 Section(header: Text("Locations")) {
-                    if ((cruise.status == .underway) && (cruise.legs != [])) {
+                    if ((cruise.status == .underway) && (!cruise.legs.isEmpty)) {
                         Text("Long press a location to start a trip to this destination")
                     }
                     VStack(alignment: .leading) {

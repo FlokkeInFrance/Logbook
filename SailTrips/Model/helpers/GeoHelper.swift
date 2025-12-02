@@ -291,11 +291,11 @@ func handleInHarbourAction(runtime: ActionRuntime) async {
 
             existing.Latitude = candidate.coordinate.latitude
             existing.Longitude = candidate.coordinate.longitude
-            existing.typeOfLocation = .marina
+            existing.typeOfLocation = TypeOfLocation.marina
             try? context.save()
 
             finalLocation = existing
-            infoMessage = "Updated position for existing marina \(existing.Name)."
+            infoMessage = "Updated posiTution for existing marina \(existing.Name)."
         }
 
     case .none:
@@ -310,8 +310,8 @@ func handleInHarbourAction(runtime: ActionRuntime) async {
 
     // Update Instances with the resolved harbour
     instances.currentLocation = harbourLocation
-    instances.currentNavZone = .harbour
-    instances.navStatus = .stopped
+    instances.currentNavZone = NavZone.harbour
+    instances.navStatus = NavStatus.stopped
     // You can refine mooringUsed depending on your logic:
     // e.g. .mooredOnShore, .mooredAlongside, etc.
     // For now we'll keep the existing value or set a default:
@@ -322,4 +322,22 @@ func handleInHarbourAction(runtime: ActionRuntime) async {
     // - sync with Instances as per your mapping table
 
     runtime.showBanner(infoMessage)
+}
+/// Convert decimal degrees to "DD°MM.mH" (H = hemisphere), e.g. 48°23.4N
+func degMinString(for value: Double, isLatitude: Bool) -> String {
+    let absVal = abs(value)
+    let degrees = Int(absVal)
+    let minutesFull = (absVal - Double(degrees)) * 60.0
+
+    // Truncate, not round, to 0.1 minute
+    let minutesTruncated = floor(minutesFull * 10) / 10.0
+
+    let hemi: String
+    if isLatitude {
+        hemi = value >= 0 ? "N" : "S"
+    } else {
+        hemi = value >= 0 ? "E" : "W"
+    }
+
+    return String(format: "%02d°%04.1f%@", degrees, minutesTruncated, hemi)
 }

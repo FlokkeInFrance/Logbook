@@ -25,9 +25,9 @@ enum HomePageNavigation: Hashable {
     case tripCompanion
     case triplist
     case cruise
-    case logbook
+    case logbookManEntry
     case parameters
-    case logEntry
+    case logView
     case actionLog
 }
 
@@ -88,13 +88,21 @@ struct HomePage: View {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
-                NavigationLink("Run Checklists", value: HomePageNavigation.runChecklist)
                 
+                NavigationLink("Run Checklists", value: HomePageNavigation.runChecklist)
                     .frame(maxWidth: .infinity)
                     .padding(10)
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
+                
+                NavigationLink("Boat Logbook", value: HomePageNavigation.logView)
+                    .frame(maxWidth: .infinity)
+                    .padding(10)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
+
                 
                 if let instance = instances {
                     if instance.currentTrip != nil {
@@ -197,9 +205,11 @@ struct HomePage: View {
                 case .tripdetail: TripListView(instances: instances!)
                 case .triplist: TripListView(instances: instances!)
                 case .cruise: CruiseListView(instances: instances!)
-                case .logbook: LogbookEntryView(instances: instances!, settings: settings[0])
+                case .logbookManEntry: LogbookEntryView(instances: instances!, settings: settings[0])
                 case .tripCompanion: TripCompanionView(instances: instances!)
                 case .parameters: SettingsView()
+                case .logView:
+                    LogbookViewer()
                 case .actionLog:
                     if let instances = instances {
                         LogActionView(

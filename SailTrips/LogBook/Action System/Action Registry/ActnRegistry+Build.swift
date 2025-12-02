@@ -911,7 +911,7 @@ extension ActionRegistry {
             "AF17",
             title: "Extra rigging",
             group: .environment,
-            isVisible: { rt in !rt.instances.selectedBoat.extraRigs.isEmpty},
+            isVisible: { rt in !rt.instances.selectedBoat.extraRiggingItems.isEmpty},
             handler: { rt in
                 // TODO: if boat.extraRigs not empty, show list of checkboxes, update rigsUsed
                 // log "Rig added: [rigUsed]"

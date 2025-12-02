@@ -21,7 +21,7 @@ struct TripCompanionView: View {
     
     @EnvironmentObject var navPath: PathManager
     @Environment(\.dismiss) private var dismiss
-    @Environment(\ .modelContext) private var modelContext
+    @Environment(\.modelContext) private var modelContext
     
     @Bindable var instances: Instances
     @State private var thisTrip: Trip? //Trip is found in Instances
@@ -59,32 +59,24 @@ struct TripCompanionView: View {
         .padding()
         .overlay(RoundedRectangle(cornerRadius: 10).stroke())
         
-        if (thisTrip != nil){
+        
+        Button("View Current Logbook") {
+            navPath.path.append(HomePageNavigation.logView)
+        }
+        /*if (thisTrip != nil){
             if (thisTrip!.tripStatus != TripStatus.preparing && thisTrip!.tripStatus != TripStatus.completed){
-                Button("Make a Log Entry"){
-                    navPath.path.append(HomePageNavigation.logbook)
+                Button("View Current Logbook"){
+                    if let trip = instances.currentTrip {
+                        navPath.path.append(HomePageNavigation.logView(trip))
+                    }
                 }
                 .font(.headline)
                 .frame(maxWidth: .infinity)
                 .padding()
                 .overlay(RoundedRectangle(cornerRadius: 10).stroke())
                 
-                Button {
-                    navPath.path.append(HomePageNavigation.actionLog)
-                } label: {
-                    VStack(spacing: 8) {
-                        Image(systemName: "dot.viewfinder")
-                        .font(.system(size: 32))
-                        Text("Action Log")
-                        .font(.headline)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 100)
-                    .padding()
-                    .background(.thinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                }
             }
-        }
+        }*/
         
         Button {
             navPath.path.append(HomePageNavigation.actionLog)
@@ -334,7 +326,7 @@ struct TripCompanionView: View {
                 
                 // Go To Log
                 Button(action: {
-                    navPath.path.append(HomePageNavigation.logbook)
+                    navPath.path.append(HomePageNavigation.actionLog)
                 }) {
                     Text("Go To Log")
                         .font(.headline)

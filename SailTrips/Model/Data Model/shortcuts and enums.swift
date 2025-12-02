@@ -29,6 +29,7 @@ typealias Motor = CruiseDataSchemaV1.Motor
 typealias Sail = CruiseDataSchemaV1.Sail
 typealias Memento = CruiseDataSchemaV1.Memento
 typealias LogbookSettings = CruiseDataSchemaV1.LogbookSettings
+typealias InventoryItem = CruiseDataSchemaV1.InventoryItem
 
 // MARK: - Pattern helpers
 
@@ -130,19 +131,37 @@ enum MotorEnergy: String, CaseIterable, Identifiable, Codable {
 
 
 enum ExtraRigging: String, Codable, CaseIterable, Identifiable {
-    case outrigger = "outrigger"
-    case spinnakerPole = "spinnaker_pole"
-    case whiskerPole = "whisker_pole"
-    case preventer = "preventer"
-    case walder = "walder"
-    case customPreventer = "custom_preventer"
-    case lifelines = "lifelines"
-    case bowsprit = "bowsprit"
-    case removableForestay = "removable_forestay"
-    case boom = "boom"
-    case other = "other"
+    case outrigger
+    case spinnakerPole
+    case whiskerPole
+    case preventer
+    case walder
+    case customPreventer
+    case lifelines
+    case bowsprit
+    case removableForestay
+    case boom
+    case other
+
     var id: String { rawValue }
+
+    var defaultName: String {
+        switch self {
+        case .outrigger:          "Outrigger"
+        case .spinnakerPole:      "Spinnaker pole"
+        case .whiskerPole:        "Whisker pole"
+        case .preventer:          "Preventer"
+        case .walder:             "Walder"
+        case .customPreventer:    "Custom preventer"
+        case .lifelines:          "Lifelines"
+        case .bowsprit:           "Bowsprit"
+        case .removableForestay:  "Removable forestay"
+        case .boom:               "Boom"
+        case .other:              "Other"
+        }
+    }
 }
+
 
 // MARK: - Checklists / UI aids
 
@@ -619,4 +638,31 @@ enum Encounters: String, CaseIterable {
     case auroras = "Auroras"
     case flying_fish = "Flying Fish"
     case other = "Other"
+}
+
+enum InventoryType: String, Codable, CaseIterable, Identifiable {
+    case extraRigging
+    case safety
+    case tools
+    case electronics
+    case spares
+    case provisioning
+    case other
+
+    var id: String { rawValue }
+}
+
+enum InventoryCategory: String, Codable, CaseIterable, Identifiable {
+    case navigation
+    case rigging
+    case safety
+    case comfort
+    case maintenance
+    case food
+    case galley
+    case other
+    case spares
+    
+
+    var id: String { rawValue }
 }

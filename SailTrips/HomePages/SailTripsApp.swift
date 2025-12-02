@@ -29,7 +29,8 @@ struct SailTripsApp: App {
                                      ToService.self,
                                      MagVar.self,
                                      Memento.self,
-                                     LogbookSettings.self] )
+                                     LogbookSettings.self,
+                                     InventoryItem.self] )
         let dataUrl = URL.applicationSupportDirectory.appending(path: "LogBookByJK.sqlite")
            print ("data model location : \(dataUrl)")
            let modelConfiguration = ModelConfiguration(

@@ -31,7 +31,8 @@ enum CruiseDataSchemaV1: VersionedSchema {
          ToService.self,
          MagVar.self,
          Memento.self,
-         LogbookSettings.self] }
+         LogbookSettings.self,
+         InventoryItem.self] }
     
     @Model
     final class BeaufortScale {
@@ -216,7 +217,10 @@ enum CruiseDataSchemaV1: VersionedSchema {
         //equipment
         var motors: [Motor] = []
         var sails: [Sail] = []
-        var extraRigs: [ExtraRigging] = []
+        @Relationship(deleteRule: .cascade) var inventory: [InventoryItem] = []
+        var extraRiggingItems: [InventoryItem] {
+            inventory.filter { $0.type == .extraRigging }
+        }
         //radio
         var callsign: String = ""
         var MMSI: String = ""
@@ -398,7 +402,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var batteryLevel : Int = 100 //in %
         var motorHours : Float = 10.0
         var odometerGeneral : Float = 0.0
-        var rigUsed : [ExtraRigging] = []
+        var rigUsed: [InventoryItem] = []
         //Trip (logged at start or end)
         var currentCruise : Cruise?
         var currentTrip : Trip?
@@ -658,6 +662,60 @@ enum CruiseDataSchemaV1: VersionedSchema {
             self.id = id
         }
     }
+    
+    @Model
+    final class InventoryItem {
+        @Attribute(.unique) private(set) var id: UUID
+        var boat: Boat?
+
+        var name: String              // “Walder”, “Removable forestay”, “Spare halyard”
+        var category: InventoryCategory
+        var subcategory: String       // free text or an enum later
+        var type: InventoryType       // “extra rigging”, “safety”, “tools”, …
+
+        var dateOfEntry: Date
+        var dateOfReplacement: Date?
+        var storageSite: String       // “Forepeak locker”, “Starboard cockpit locker”
+
+        /// Should usage of this item be tracked in the logbook?
+        var tracksUsageInLogbook: Bool = false
+
+        /// Optional link back to your enum for canonical items.
+        var extraRiggingKind: ExtraRigging?
+        var quantity: Int = 0
+        var brand: String = ""
+        var retailer: String = ""
+        var checkPeriodicity: Int = 0
+        var nextCheck: Date = Date()
+
+        init(
+            id: UUID = UUID(),
+            boat: Boat? = nil,
+            name: String,
+            category: InventoryCategory,
+            subcategory: String = "",
+            type: InventoryType,
+            dateOfEntry: Date = .now,
+            dateOfReplacement: Date? = nil,
+            storageSite: String = "",
+            tracksUsageInLogbook: Bool = false,
+            extraRiggingKind: ExtraRigging? = nil
+        ) {
+            self.id = id
+            self.boat = boat
+            self.name = name
+            self.category = category
+            self.subcategory = subcategory
+            self.type = type
+            self.dateOfEntry = dateOfEntry
+            self.dateOfReplacement = dateOfReplacement
+            self.storageSite = storageSite
+            self.tracksUsageInLogbook = tracksUsageInLogbook
+            self.extraRiggingKind = extraRiggingKind
+        }
+    }
+
+
     
     @Model
     final class LogbookSettings {
