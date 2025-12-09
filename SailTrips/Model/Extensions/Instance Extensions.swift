@@ -22,3 +22,9 @@ extension Instances {
         environmentDangers = [.none]
     }
 }
+
+extension Instances {
+    func derivedSituationID() -> SituationID {
+        deriveSituationID (for:  self)
+    }
+}

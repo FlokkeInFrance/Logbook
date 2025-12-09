@@ -125,10 +125,28 @@ extension Sail {
     var canShakeOutReef: Bool {
         guard reductionMode == .reef else { return false }
         switch currentState {
-        case .reef1, .reef2, .reef3:
+        case  .reef2, .reef3:
             return true          // can go up towards full
         default:
             return false
+        }
+    }
+    
+    var isReduced: Bool {
+        if reductionMode == .reef {
+            switch currentState {
+            case .reef1, .reef2, .reef3:
+                return true
+            default:
+                return false
+            }
+        } else {
+            switch currentState {
+            case .down, .vlightFurled, .lightFurled, .halfFurled, .tightFurled:
+                return true
+            default:
+                return false
+            }
         }
     }
 
@@ -147,7 +165,7 @@ extension Sail {
     var canUnfurl: Bool {
         guard reductionMode == .furl else { return false }
         switch currentState {
-        case .vlightFurled, .lightFurled, .halfFurled, .tightFurled:
+        case .lightFurled, .halfFurled, .tightFurled:
             return true          // can go up towards full
         default:
             return false
@@ -179,4 +197,24 @@ extension Sail {
     }
 }
 
+extension SailState {
+    /// Short plain-text name suitable for logs.
+    var logName: String {
+        switch self {
+        case .rigged:        return "rigged"
+        case .reefed:        return "reefed"
+        case .lowered:       return "lowered"
+        case .full:          return "full"
+        case .down:          return "down"
+        case .reef1:         return "reef 1"
+        case .reef2:         return "reef 2"
+        case .reef3:         return "reef 3"
+        case .vlightFurled:  return "very lightly furled"
+        case .lightFurled:   return "lightly furled"
+        case .halfFurled:    return "half furled"
+        case .tightFurled:   return "tightly furled"
+        case .outOfOrder:    return "out of order"
+        }
+    }
+}
 

@@ -8,6 +8,7 @@
 import CoreLocation
 import MapKit
 import SwiftData
+import SwiftUI
 
 // MARK: - Helpers
 
@@ -244,8 +245,9 @@ private func createAdHocLocation(
 
 @MainActor
 func handleInHarbourAction(runtime: ActionRuntime) async {
+    @Environment(\.modelContext) var modelContext
     let instances = runtime.instances
-    let context = runtime.modelContext
+    let context = modelContext
 
     // Fetch all Location records once
     let allLocations: [Location]

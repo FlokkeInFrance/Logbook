@@ -373,7 +373,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var skipper: CrewMember?
         var startPlace: Location?
         var destination: Location?
-        var plannedStops: [Location]=[]
+        var plannedRoute: [Location]=[]
         var comments: String=""
         var phoneToContact: String=""
         var vhfChannelDestination: String=""
@@ -429,8 +429,8 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var COG : Int = 0
         var bearingToNextWPT : Int = 0
         var SOG : Float = 0.0
-        var tack : Tack = Tack.none
         //Sail parameters
+        var tack : Tack = Tack.none
         var pointOfSail : PointOfSail = PointOfSail.stopped
         var STW : Float = 0.0 //speed through water, needs loch to be clean
         var AWS : Int = 0 //apparent wind speed

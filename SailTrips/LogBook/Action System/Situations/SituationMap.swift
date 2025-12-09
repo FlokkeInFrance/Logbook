@@ -5,6 +5,62 @@
 //  Created by jeroen kok on 29/11/2025.
 //
 
+import Foundation
+import SwiftUI
+
+/// High-level situations S1, S2, S41… based on your spec.
+/// For v1 we’ll switch them manually; later they’ll be derived from Trip/Instances.
+///
+
+struct SituationDefinition {
+    let id: SituationID
+    let title: LocalizedStringKey
+    /// Action tags in the order you want to display them.
+    let actionTags: [String]
+}
+
+//enumeration of Situations
+enum SituationID: String, CaseIterable, Identifiable, Codable {
+    case s1PreparingTrip        = "S1"
+    case s2TripStarted          = "S2"
+    case s3InHarbourArea        = "S3"
+
+    case s41CoastalMotor        = "S41"
+    case s42ProtectedMotor      = "S42"
+    case s43WaterwayMotor       = "S43"
+    case s44OpenSeaMotor        = "S44"
+    case s45TrafficLane         = "S45"
+
+    case s51CoastalSail         = "S51"
+    case s52ProtectedSail       = "S52"
+    case s53WaterwaySail        = "S53"
+    case s54OpenSeaSail         = "S54"
+    case s55TrafficLane         = "S55"
+    
+    case s51wCoastalSailStrong  = "S51w"
+    case s52wProtectedSailStrong = "S52w"
+    case s53wWaterwaySailStrong = "S53w"
+    case s54wOpenSeaSailStrong  = "S54w"
+    case s55wTrafficLane        = "S55w"
+
+    case s6ApproachMotor        = "S6"
+    case s6sApproachSail        = "S6s"
+    case s7HarbourLikeS3        = "S7"
+    case s8Storm                = "S8"
+    case s9DangerSpotLightWind  = "S9"
+    case s9wDangerSpotStrongWind = "S9w"
+
+    // Emergency "situations" for layout:
+    case e1MOB                  = "E1"
+    case e2Fire                 = "E2"
+    case e3Medical              = "E3"
+    case e4OtherEmergency       = "E4"
+
+    var id: String { rawValue }
+}
+
+//Situation map which in fact will belon to ActionRegistry
+
 extension ActionRegistry {
     static let situationMap: [SituationID: SituationDefinition] = [
         
@@ -26,6 +82,7 @@ extension ActionRegistry {
             actionTags: [
                 "A7M", "A7A",       // Cast off (mutually exclusive)
                 "A3", "A5", "A4", "A6", // Motor regime
+                "A9","A10", //are done after unmooring but require sropping again
                 "A1R"              // Stop the trip
             ]
         ),
@@ -35,10 +92,10 @@ extension ActionRegistry {
             id: .s3InHarbourArea,
             title: "In harbour / anchorage / buoy field",
             actionTags: [
-                "A11H", "A11A", "A11B", // Leave zone
-                "A9",                   // Tank fuel
+                "A11H", "A11A", "A11B", // Leave zone (one of those)
+                "A9",                   // Tank fuel, didn't necessarily logged stopping
                 "A3", "A5", "A4", "A6", // Motor regime
-                "A10",                  // Relocate without leaving
+                "A10",                  // Relocate without leaving, didn't necessarily logged stopping
                 "A8M", "A8A"            // Stop boat (mutually exclusive)
             ]
         ),
@@ -52,7 +109,7 @@ extension ActionRegistry {
                 "A27", "A30", "A29", "A28",     // Add sails
                 "A50", "A24", "A21", "A23", "A20", // Navigation (A24 if WPT)
                 "A25", "A25R", "A26",           // Steering / AP
-                "A13", "A14", "A15",            // Change zone
+                "A12", "A14", "A15","A22",            // Change zone
                 "A16"                           // Approach
             ]
         ),
@@ -66,7 +123,7 @@ extension ActionRegistry {
                 "A27", "A30", "A29", "A28",     // Add sails
                 "A50", "A24", "A21", "A23", "A20", // Navigation
                 "A25", "A25R", "A26",           // Steering / AP
-                "A12", "A14",                   // Change zone
+                "A13", "A15",                // Change zone
                 "A16"                           // Approach
             ]
         ),
@@ -80,7 +137,7 @@ extension ActionRegistry {
                 "A50", "A24",                   // Navigation
                 "A25", "A25R", "A26",           // Steering
                 "A27", "A30", "A29", "A28",     // Add sails
-                "A12", "A15",                   // Change zone
+                "A12", "A13",                   // Change zone
                 "A16"                           // Approach
             ]
         ),
@@ -95,9 +152,20 @@ extension ActionRegistry {
                 "A27", "A30", "A29", "A28",     // Add sails
                 "A23", "A24",                   // Navigate (A24 if WPT)
                 "A21",                          // Forced navigation
-                "A12"                           // Change zone
+                "A13","A22"                           // Change zone
             ]
         ),
+        
+            .s45TrafficLane: SituationDefinition(
+                id: .s45TrafficLane,
+                title: "In Traffice Lane, under motor",
+                actionTags: [
+                    "A3", "A5", "A4", "A6",         // Motor regime
+                    "A25", "A25R", "A26",           // Steering
+                    "A27", "A30", "A29", "A28",     // Add sails
+                    "A14", "A13"                    // Change zone
+                ]
+            ),
         
         // S51 – coastal area, under sail / motorsail, ≤4 Bft
         .s51CoastalSail: SituationDefinition(
@@ -112,7 +180,7 @@ extension ActionRegistry {
                 "A50", "A24", "A21", "A23", "A20", // Navigation
                 "A25", "A25R", "A26",           // Steering
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
-                "A13", "A14", "A15",            // Change zone
+                "A12", "A14", "A15","A22",            // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -131,7 +199,7 @@ extension ActionRegistry {
                 "A25", "A25R", "A26",           // Steering
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
                 "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A14",                   // Change zone
+                "A12", "A13",                   // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -150,7 +218,7 @@ extension ActionRegistry {
                 "A41", "A42", "A27W", "A27WR",           // Modify sail shape
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
                 "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A15",                   // Change zone
+                "A12", "A13",                   // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -169,7 +237,23 @@ extension ActionRegistry {
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
                 "A41", "A42", "A27W", "A27WR",           // Modify sail shape
                 "A24", "A21", "A23", "A20",     // Navigate
-                "A12"                           // Change zone
+                "A13","A22"                           // Change zone
+            ]
+        ),
+        
+        // S55 – in a Traffic Lane under sail / motorsail, ≤4 Bft
+        .s55TrafficLane: SituationDefinition(
+            id: .s55TrafficLane,
+            title: "Traffic Lane under sail (≤4 Bft)",
+            actionTags: [
+                "A39", "A40", "A43", "A44",     // Modify AWA
+                "A25", "A25R", "A26",           // Steering
+                "A29", "A29R", "A30", "A30R",
+                "A31", "A31R", "A32", "A32R",
+                "A28",                          // Modify sail plan
+                "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
+                "A41", "A42", "A27W", "A27WR",           // Modify sail shape
+                "A14","A13"                            // Change zone
             ]
         ),
         
@@ -186,7 +270,7 @@ extension ActionRegistry {
                 "A28",                          // Modify sail plan
                 "A50", "A24", "A21", "A23", "A20", // Navigation
                 "A25", "A25R", "A26",           // Steering
-                "A13", "A14", "A15",            // Change zone
+                "A14", "A12", "A15","A22",            // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -203,14 +287,14 @@ extension ActionRegistry {
                 "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
                 "A25", "A25R", "A26",           // Steering
                 "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A14",                   // Change zone
+                "A13", "A15",                   // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
         ),
         .s53wWaterwaySailStrong: SituationDefinition(
             id: .s53wWaterwaySailStrong,
-            title: "Waterway, under sail, strong wind",
+            title: "Intracoastal Waterway, under sail, strong wind",
             actionTags: [
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
                 "A39", "A40", "A43", "A44",     // Modify AWA
@@ -220,7 +304,7 @@ extension ActionRegistry {
                 "A28",                          // Modify sail plan
                 "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
                 "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A15",                   // Change zone
+                "A12", "A13",                   // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -237,9 +321,25 @@ extension ActionRegistry {
                 "A28",                          // Modify sail plan
                 "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
                 "A24", "A21", "A23", "A20",     // Navigate
-                "A12"                           // Change zone
+                "A13","A22"                          // Change zone
             ]
         ),
+        
+        .s55wTrafficLane: SituationDefinition(
+            id: .s55wTrafficLane,
+            title: "Traffic Lane under sail (≤4 Bft)",
+            actionTags: [
+                "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
+                "A39", "A40", "A43", "A44",     // Modify AWA
+                "A25", "A25R", "A26",           // Steering
+                "A29", "A29R", "A30", "A30R",
+                "A31", "A31R", "A32", "A32R",
+                "A28",                          // Modify sail plan
+                "A41", "A42", "A27W", "A27WR",           // Modify sail shape
+                "A13","A14"                           // Change zone
+            ]
+        ),
+        
         
         // S6 – approach under motor
         .s6ApproachMotor: SituationDefinition(
@@ -265,15 +365,19 @@ extension ActionRegistry {
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
         ),
+        //s7 for in Harbor operations
         
-        // S7 – in harbour/anchorage/buoy field – same as S3
-        /*.s7HarbourLikeS3: SituationDefinition(
-         id: .s7HarbourLikeS3,
-         title: "In harbour / anchorage / buoy field",
-         actionTags: situationMap["S3"]?.actionTags ?? [
-         "A11H", "A11A", "A11B", "A9", "A3", "A5", "A4", "A6", "A10", "A8M", "A8A"
-         ]
-         ),*/
+            .s7HarbourLikeS3: SituationDefinition(
+                id: .s7HarbourLikeS3,
+                title: "Moored in harbour / anchorage / buoy field",
+                actionTags: [
+                    "A7M", "A7A",            // Cast off (moored or anchored)
+                    "A3", "A5", "A4", "A6",  // Motor regime
+                    "A9",                    // Tank fuel
+                    "A10",                   // Relocate boat
+                    "A1R"                    // Finish trip
+                ]
+            ),
         
         // S8 – storm manoeuvre
             .s8Storm: SituationDefinition(

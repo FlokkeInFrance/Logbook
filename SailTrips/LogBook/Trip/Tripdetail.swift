@@ -29,12 +29,12 @@ struct TripDetailView: View {
                     "Route:",
                     value: "From \(trip.startPlace?.Name ?? "—") to \(trip.destination?.Name ?? "—")"
                 )
-                if !trip.plannedStops.isEmpty {
+                if !trip.plannedRoute.isEmpty {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Planned stops:")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                        ForEach(trip.plannedStops, id: \.id) { stop in
+                        ForEach(trip.plannedRoute, id: \.id) { stop in
                             Text(stop.Name)
                         }
                     }

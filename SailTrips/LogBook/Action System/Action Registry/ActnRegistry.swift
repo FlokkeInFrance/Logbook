@@ -75,20 +75,21 @@ struct ActionRegistry {
 extension ActionRegistry {
 
     static func logSimple(_ message: String, using ctx: ActionContext) {
+        
         guard let trip = ctx.instances.currentTrip else {
             ctx.showBanner("No active Trip – action not logged.")
             return
         }
-
+        let modelContext = ctx.modelContext
         let log = Logs(trip: trip)
         log.dateOfLog = Date()
         log.posLat = ctx.instances.gpsCoordinatesLat
         log.posLong = ctx.instances.gpsCoordinatesLong
         log.logEntry = message
 
-        ctx.modelContext.insert(log)
+        modelContext.insert(log)
         do {
-            try ctx.modelContext.save()
+            try modelContext.save()
             ctx.showBanner("Logged: \(message)")
         } catch {
             ctx.showBanner("Could not save log (\(error.localizedDescription))")

@@ -214,8 +214,8 @@ struct TripCompanionView: View {
                                 )
                             }
                     }
-                    if let stops = instances.currentTrip?.plannedStops, !stops.isEmpty {
-                        Text("Planned Stops:")
+                    if let stops = instances.currentTrip?.plannedRoute, !stops.isEmpty {
+                        Text("Planned Route:")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                         ScrollView(.horizontal, showsIndicators: false) {
@@ -231,8 +231,8 @@ struct TripCompanionView: View {
                 }
                 .sheet(isPresented: $showLocationSelector) {
                     LocationSelectorView(selectedLocations: Binding(
-                        get: { instances.currentTrip?.plannedStops ?? [] },
-                        set: { instances.currentTrip?.plannedStops = $0 }
+                        get: { instances.currentTrip?.plannedRoute ?? [] },
+                        set: { instances.currentTrip?.plannedRoute = $0 }
                     ))
                 }
                 // Comments
@@ -340,9 +340,41 @@ struct TripCompanionView: View {
                 if (instances.currentTrip == nil) {
                     let newTrip = Trip()
                     newTrip.dateOfStart = Date.now
+                    newTrip.boat = instances.selectedBoat
+                    newTrip.tripStatus = TripStatus.preparing
+                    
                     modelContext.insert(newTrip)
                     instances.currentTrip = newTrip
                     instances.dateOfStart = newTrip.dateOfStart
+                    if !(
+                            (instances.currentNavZone == .anchorage)
+                         || (instances.currentNavZone == .harbour)
+                         || (instances.currentNavZone == .buoyField)
+                         )
+                    {
+                        instances.currentNavZone = .harbour
+                    }
+                    if (instances.mooringUsed == .none || instances.mooringUsed == .other)
+                    {instances.mooringUsed = .mooredOnShore}
+                    instances.navStatus = .none
+                    instances.propulsion = .none
+                    instances.onCourse = true
+                    instances.tack = .none
+                    instances.pointOfSail = .stopped
+                    instances.daySail = true
+                    instances.presenceOfCn = false
+                    instances.severeWeather = .none
+                    instances.environmentDangers = [.none]
+                    instances.currentSpeed = 0
+                    instances.currentDirection = 0
+                    instances.emergencyState = false
+                    instances.emergencyStart = nil
+                    instances.emergencyEnd = nil
+                    instances.nextHT = nil
+                    instances.nextLT = nil
+                    instances.next2HT = nil
+                    instances.next2LT = nil
+                    
                     if instances.currentLocation != nil {
                         newTrip.startPlace = instances.currentLocation
                     }

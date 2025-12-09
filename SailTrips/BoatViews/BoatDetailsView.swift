@@ -76,8 +76,9 @@ struct BoatDetailsView: View {
                 
                 TextField("Color of the hull", text: $aBoat.hullColor)
                 if aBoat.boatType == .sailboat || aBoat.boatType == .motorsailer {
-                    TextField("Rig Type", text: $aBoat.otherType).autocorrectionDisabled()
                     // SAILS LIST & MODIFIER Hide this section if not a sailboat
+                    TextField("Rig Type", text: $aBoat.otherType).autocorrectionDisabled()
+                   
                     HStack {
                         Text("Sails")
                         Spacer()
@@ -288,9 +289,19 @@ struct SailModifyView: View {
     var body: some View {
         VStack {
             HStack {
+                if (selectedIndex != nil) {
+                    Button (action: {isAddingCustom = true})
+                    {
+                        Image(systemName: "square.and.pencil.circle.fill")
+                    }
+                }
+                else{
                 Button(action: addNewDefaultSail) {
                     Image(systemName: "plus.circle")
-                }
+                }}
+                Spacer()
+                Text ("List of available Sails")
+                    .font(Font.headline)
                 Spacer()
                 if selectedIndex != nil {
                     Button(action: deleteSelected) {
@@ -308,7 +319,7 @@ struct SailModifyView: View {
                     ForEach(Array(sails.enumerated()), id: \.element.id) { idx, sail in
                         Text(sail.nameOfSail)
                             .padding(4)
-                            .background(selectedIndex == idx ? Color.gray.opacity(0.3) : Color.clear)
+                            .background(selectedIndex == idx ? Color.blue.opacity(0.4) : Color.clear)
                             .cornerRadius(4)
                             .onTapGesture {
                                 selectedIndex = idx
@@ -318,15 +329,19 @@ struct SailModifyView: View {
                 }
             }
             .frame(maxHeight: CGFloat(min(sails.count, 10)) * 44)
-
+            
+            Divider()
+                .frame(height: 2)
+                .overlay(.black.opacity(0.6))
+            
             if isAddingCustom {
                 Form {
                     let idx = selectedIndex!
-                    TextField("Name", text: $sails[idx].nameOfSail)
-                    Toggle("Optional", isOn: $sails[idx].optional)
-                    Toggle("Reefs", isOn: $sails[idx].reducedWithReefs)
-                    Toggle("Furling", isOn: $sails[idx].reducedWithFurling)
-                    Toggle("Outpoled", isOn: $sails[idx].canBeOutpoled)
+                    TextField("Sail's name: ", text: $sails[idx].nameOfSail)
+                    Toggle("Optional sail", isOn: $sails[idx].optional)
+                    Toggle("Reduced with Reefs", isOn: $sails[idx].reducedWithReefs)
+                    Toggle("With Furler", isOn: $sails[idx].reducedWithFurling)
+                    Toggle("Can be Outpoled", isOn: $sails[idx].canBeOutpoled)
                     NumberField(label: "Area", inData: $sails[idx].sailArea,
                                 inString: BoatDetailsView.myFormat.string(for: sails[idx].sailArea) ?? "")
                     Picker("State", selection: $sails[idx].currentState) {
@@ -335,7 +350,7 @@ struct SailModifyView: View {
                         }
                     }
                     HStack {
-                        Button("Add") { isAddingCustom = false }
+                        Button("Ok") { isAddingCustom = false }
                         Spacer()
                         Button("Cancel") {
                             isAddingCustom = false
@@ -346,18 +361,30 @@ struct SailModifyView: View {
             } else {
                 VStack(spacing: 8) {
                     if !sails.contains(where: { $0.nameOfSail == "Mainsail" }) {
-                        Button("Mainsail") { addDefaultMainsail() }
+                        Button("Add a Mainsail with reefs") { addDefaultMainsail() }
                     }
-                    if !sails.contains(where: { $0.nameOfSail == "Genoa" }) {
-                        Button("Genoa") { addGenoa() }
+                    if !sails.contains(where: { $0.nameOfSail == "Mainsail" }) {
+                        Button("Add a furlable Mainsail") { addDefaultMainsailWithFurl() }
+                    }
+                    if !sails.contains(where: { $0.nameOfSail == "Genoa" || $0.nameOfSail == "Jib"}) {
+                        Button("Add a furlable Genoa") { addGenoa() }
+                    }
+                    if !sails.contains(where: { $0.nameOfSail == "Genoa" || $0.nameOfSail == "Jib"}) {
+                        Button("Add a Genoa with reefs") { addGenoaReef() }
+                    }
+                    if !sails.contains(where: { $0.nameOfSail == "Genoa" || $0.nameOfSail == "Jib"}) {
+                        Button("Add a furlable Jib") { addJib() }
+                    }
+                    if !sails.contains(where: { $0.nameOfSail == "Genoa" || $0.nameOfSail == "Jib"}) {
+                        Button("Add a furlable Jib") { addJibReef() }
                     }
                     if !sails.contains(where: { $0.nameOfSail == "Gennaker" }) {
-                        Button("Gennaker") { addGennaker() }
+                        Button("Add a Gennaker") { addGennaker() }
                     }
                     if !sails.contains(where: { $0.nameOfSail == "Spinnaker" }) {
-                        Button("Spinnaker") { addDefaultSpinnaker() }
+                        Button("Add a Spinnaker") { addDefaultSpinnaker() }
                     }
-                    Button("Custom") {
+                    Button(" Add a Custom Sail") {
                         let new = Sail(id: UUID(), nameOfSail: "", reducedWithReefs: false,
                                        reducedwithFurling: false, currentState: .down)
                         sails.append(new)
@@ -381,8 +408,20 @@ struct SailModifyView: View {
     private func addDefaultMainsail() {
         sails.append(Sail(id: UUID(), nameOfSail: "Mainsail", reducedWithReefs: true, reducedwithFurling: false, currentState: .down))
     }
+    private func addDefaultMainsailWithFurl() {
+        sails.append(Sail(id: UUID(), nameOfSail: "Mainsail", reducedWithReefs: false, reducedwithFurling: true, currentState: .down))
+    }
     private func addGenoa() {
         sails.append(Sail(id: UUID(), nameOfSail: "Genoa", reducedWithReefs: false, reducedwithFurling: true, currentState: .lowered))
+    }
+    private func addGenoaReef() {
+        sails.append(Sail(id: UUID(), nameOfSail: "Genoa", reducedWithReefs: true, reducedwithFurling: false, currentState: .lowered))
+    }
+    private func addJib() {
+        sails.append(Sail(id: UUID(), nameOfSail: "Jib", reducedWithReefs: false, reducedwithFurling: true, currentState: .lowered))
+    }
+    private func addJibReef() {
+        sails.append(Sail(id: UUID(), nameOfSail: "Jib", reducedWithReefs: true, reducedwithFurling: false, currentState: .lowered))
     }
     private func addGennaker() {
         let s = Sail(id: UUID(), nameOfSail: "Gennaker", reducedWithReefs: false, reducedwithFurling: false, currentState: .down)

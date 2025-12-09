@@ -9,6 +9,104 @@
 
 // MARK: - Propulsion helper functions
 
+import SwiftUI
+
+// MARK: - Sail state step helpers
+
+fileprivate func nextReefDown(from state: SailState) -> SailState? {
+    switch state {
+    case .full:   return .reef1
+    case .reef1:  return .reef2
+    case .reef2:  return .reef3
+    //case .reef3:  return .lowered
+    default:      return nil
+    }
+}
+
+fileprivate func nextReefUp(from state: SailState) -> SailState? {
+    switch state {
+    case .reef3:  return .reef2
+    case .reef2:  return .reef1
+   // case .reef1:  return .full
+    default:      return nil
+    }
+}
+
+fileprivate func nextFurlDown(from state: SailState) -> SailState? {
+    switch state {
+    case .full:         return .vlightFurled
+    case .vlightFurled: return .lightFurled
+    case .lightFurled:  return .halfFurled
+    case .halfFurled:   return .tightFurled
+  //  case .tightFurled:  return .lowered
+    default:            return nil
+    }
+}
+
+fileprivate func nextFurlUp(from state: SailState) -> SailState? {
+    switch state {
+    case .tightFurled:  return .halfFurled
+    case .halfFurled:   return .lightFurled
+    case .lightFurled:  return .vlightFurled
+  //  case .vlightFurled: return .full
+    default:            return nil
+    }
+}
+
+/// Generic "reduce area" for a sail – uses its ReductionMode when possible.
+fileprivate func reduceOnce(_ sail: Sail) -> Bool {
+    let old = sail.currentState
+
+    let newState: SailState?
+    
+    if sail.reducedWithReefs {newState = nextReefDown(from: old)} else
+    {if sail.reducedWithFurling {newState = nextFurlDown(from: old)}
+        else {newState = nextReefDown(from:old)}}
+
+    guard let next = newState else { return false }
+    sail.currentState = next
+    return true
+}
+
+/// Generic "increase area" for a sail – uses its ReductionMode when possible.
+fileprivate func increaseOnce(_ sail: Sail) -> Bool {
+    let old = sail.currentState
+
+    let newState: SailState?
+    if sail.reducedWithReefs {newState = nextReefUp(from: old)} else
+    {if sail.reducedWithFurling {newState = nextFurlUp(from: old)}
+        else {newState = nextReefUp(from:old)}
+    }
+ /*   switch sail.reductionMode {
+    case .reef:
+        newState = nextReefUp(from: old)
+    case .furl:
+        newState = nextFurlUp(from: old)
+    }*/
+
+    guard let next = newState else { return false }
+    sail.currentState = next
+    return true
+}
+
+fileprivate func setFull(_ sail: Sail) -> Bool{
+    guard sail.currentState != .full else { return false }
+    sail.currentState = .full
+    return true
+}
+
+/// Drop / stow a sail: make sure it's not a propulsion tool anymore.
+fileprivate func fullyDrop(_ sail: Sail) {
+    sail.currentState = .lowered
+}
+
+/// After any sail change, recompute propulsion + situation.
+fileprivate func finishSailChange(_ rt: ActionRuntime, logText: String) {
+    recomputePropulsionTool(rt)
+    ActionRegistry.logSimple(logText, using: rt.context)
+    //rt.rederiveSituation()
+}
+
 fileprivate func propulsionMotorIndex(in boat: Boat) -> Int? {
     let motors = boat.motors
     guard !motors.isEmpty else { return nil }
@@ -38,6 +136,43 @@ fileprivate func propulsionMotorIndex(_ rt: ActionRuntime) -> Int? {
     let boat = rt.instances.selectedBoat
     return propulsionMotorIndex(in: boat)
 }
+
+// MARK: - Helpers for propulsion
+
+/// Returns true if at least one sail is currently a propulsion tool
+/// (ie not down / lowered / out of order).
+fileprivate func sailsAreDriving(_ boat: Boat) -> Bool {
+    boat.sails.contains (where: { (sail: Sail) in
+        switch sail.currentState {
+        case .full, .reef1, .reef2, .reef3, .vlightFurled, .lightFurled, .halfFurled, .tightFurled:
+            return true
+        default:
+            return false
+        }
+    })
+}
+/// Recompute Instances.propulsion based on sails + single propulsion motor.
+fileprivate func recomputePropulsionTool(_ rt: ActionRuntime) {
+    let boat = rt.instances.selectedBoat
+
+    let motorRunning: Bool = {
+        guard let idx = propulsionMotorIndex(rt) else { return false }
+        return boat.motors[idx].state != .stopped
+    }()
+
+    let sailDriving = sailsAreDriving(boat)
+
+    let newTool: PropulsionTool
+    switch (sailDriving, motorRunning) {
+    case (false, false): newTool = .none
+    case (false, true):  newTool = .motor
+    case (true,  false): newTool = .sail
+    case (true,  true):  newTool = .motorsail
+    }
+
+    rt.instances.propulsion = newTool
+}
+
 
 fileprivate func hasOnlyOnePropulsionMotor(_ rt: ActionRuntime) -> Bool {
     propulsionMotorIndex(rt) != nil
@@ -103,7 +238,11 @@ extension ActionRegistry {
         }
 
         func isTripNotCompleted(_ rt: ActionRuntime) -> Bool {
-            rt.instances.currentTrip?.tripStatus != TripStatus.preparing
+            rt.instances.currentTrip?.tripStatus != TripStatus.completed
+        }
+        
+        func isTripInterrupted(_ rt: ActionRuntime) -> Bool {
+            rt.instances.currentTrip?.tripStatus == TripStatus.interrupted
         }
 
         func isBoatStopped(_ rt: ActionRuntime) -> Bool {
@@ -155,13 +294,52 @@ extension ActionRegistry {
             systemImage: "play.fill",
             isVisible: { rt in isTripPreparing(rt) },
             handler: { rt in
-                // TODO:
-                // - set trip.state = .started
-                // - rt.instances.navStatus = .stopped
-                // - infer harbour/anchorage/mooringType from location, ask user if unclear
-                // - append log "[trip.TypeOfTrip] started"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip to start.")
+                    return
+                }
+
+                let instances = rt.instances
+
+                // Trip state
+                trip.tripStatus = .started
+                trip.dateOfStart = Date()
+
+                // Instances trip info
+                instances.dateOfStart = Date()
+                instances.tripDays = 0
+                instances.odometerForTrip = 0.0
+                instances.odometerForCruise = instances.odometerForCruise // unchanged
+
+                // Position at start (best effort – uses current GPS coords)
+                instances.startLocationLat = instances.gpsCoordinatesLat
+                instances.startLocationLong = instances.gpsCoordinatesLong
+
+                // Sequence / navigation
+                instances.navStatus = .stopped
+                instances.propulsion = .none
+                instances.tack = .none
+                instances.pointOfSail = .stopped
+                instances.wingOnWing = false
+                instances.onCourse = true
+                instances.steering = .byHand
+
+                // Environment & emergency reset per your instance-var-mods
+                instances.environmentDangers = [.none]
+                instances.trafficDescription = ""
+
+                instances.emergencyState = false
+                instances.emergencyLevel = .none
+                instances.emergencyNature = .none
+                instances.emergencyStart = nil
+                instances.emergencyEnd = nil
+                instances.emergencyDescription = ""
+
+                ActionRegistry.logSimple("Trip started.", using: rt.context)
             }
-        )
+)
+
+
 
         reg.add(
             "A1R",
@@ -170,7 +348,7 @@ extension ActionRegistry {
             systemImage: "stop.fill",
             isVisible: { rt in
                 // "only when trip is interrupted and boat stopped" :contentReference[oaicite:4]{index=4}
-                isTripNotCompleted(rt) && isBoatStopped(rt)
+                isTripInterrupted(rt) && isBoatStopped(rt)
             },
             handler: { rt in
                 // TODO:
@@ -215,39 +393,57 @@ extension ActionRegistry {
 
         // MARK: - Motor regime A3..A6
 
-        reg.add(
+        reg.add( // Done
             "A3",
             title: "Engine idle",
             group: .motor,
             systemImage: "gauge.low",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
             handler: { rt in
-                // TODO: set main motor state to .idle
-                // log "Main motor to idle"
+                let boat = rt.instances.selectedBoat
+                guard let idx = propulsionMotorIndex(in: boat) else {
+                    rt.showBanner("No propulsion motor configured.")
+                    return
+                }
+                boat.motors[idx].state = .idle
+                rt.instances.propulsion = rt.instances.currentPropulsionTool()
+                ActionRegistry.logSimple("Main engine idle.", using: rt.context)
             }
         )
 
-        reg.add(
+        reg.add( // Done
             "A4",
             title: "Engine cruise",
             group: .motor,
             systemImage: "gauge",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
             handler: { rt in
-                // TODO: set main motor state to .cruise
-                // log "Main motor to cruise"
+                let boat = rt.instances.selectedBoat
+                guard let idx = propulsionMotorIndex(in: boat) else {
+                    rt.showBanner("No propulsion motor configured.")
+                    return
+                }
+                boat.motors[idx].state = .cruise
+                rt.instances.propulsion = rt.instances.currentPropulsionTool()
+                ActionRegistry.logSimple("Main engine cruise regime", using: rt.context)
             }
         )
 
-        reg.add(
+        reg.add( // Done
             "A5",
             title: "Engine slow",
             group: .motor,
             systemImage: "gauge.medium",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
             handler: { rt in
-                // TODO: set main motor state to .slow
-                // log "Main motor to slow forward"
+                let boat = rt.instances.selectedBoat
+                guard let idx = propulsionMotorIndex(in: boat) else {
+                    rt.showBanner("No propulsion motor configured.")
+                    return
+                }
+                boat.motors[idx].state = .slow
+                rt.instances.propulsion = rt.instances.currentPropulsionTool()
+                ActionRegistry.logSimple("Main engine slow.", using: rt.context)
             }
         )
 
@@ -258,10 +454,17 @@ extension ActionRegistry {
             systemImage: "gauge.high",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
             handler: { rt in
-                // TODO: set main motor state to .full
-                // log "Main motor to full forward"
+                let boat = rt.instances.selectedBoat
+                guard let idx = propulsionMotorIndex(in: boat) else {
+                    rt.showBanner("No propulsion motor configured.")
+                    return
+                }
+                boat.motors[idx].state = .full
+                rt.instances.propulsion = rt.instances.currentPropulsionTool()
+                ActionRegistry.logSimple("Main engine full revs", using: rt.context)
             }
         )
+
 
         // MARK: - Cast off / mooring A7..A10
 
@@ -271,15 +474,30 @@ extension ActionRegistry {
             group: .navigation,
             systemImage: "figure.walk",
             isVisible: { rt in
-                // "when trip started and boat is stopped and boat is moored or anchored" :contentReference[oaicite:6]{index=6}
                 isBoatStopped(rt) && isTripNotCompleted(rt) && isMoored(rt)
             },
             handler: { rt in
-                // TODO: trip.state = .underway, navStatus = .underway,
-                // mooringType = .none, onCourse = true
-                // log "Casted off at [HH:MM]"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                let instances = rt.instances
+
+                // We are now en route
+                trip.tripStatus = .underway
+                instances.navStatus = .underway
+
+                // No longer attached to shore/buoy/anchor
+                instances.mooringUsed = .none
+
+                // By definition we consider ourselves "on course" again
+                instances.onCourse = true
+
+                ActionRegistry.logSimple("Cast off", using: rt.context)
             }
         )
+
 
         reg.add(
             "A7A",
@@ -292,13 +510,24 @@ extension ActionRegistry {
                 && (rt.instances.currentNavZone == NavZone.anchorage)
             },
             handler: { rt in
-                //  TODO: trip.state = .underway
-                // navStatus = .underway
-                // mooringType = .none
-                // onCourse = true
-                // log "Anchor raised"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                let instances = rt.instances
+
+                trip.tripStatus = .underway
+                instances.navStatus = .underway
+
+                // Anchor no longer down
+                instances.mooringUsed = .none
+                instances.onCourse = true
+
+                ActionRegistry.logSimple("Anchor raised.", using: rt.context)
             }
         )
+
 
         reg.add(
             "A8M",
@@ -306,17 +535,41 @@ extension ActionRegistry {
             group: .navigation,
             systemImage: "dock.rectangle",
             isVisible: { rt in
+                // When moving, in harbour or buoy field
                 !isBoatStopped(rt) && (rt.instances.currentNavZone == NavZone.harbour || rt.instances.currentNavZone == NavZone.buoyField)
+
             },
             handler: { rt in
-                // TODO:
-                // - set mooringType depending on user choice (quay / mooring)
-                // - trip.state = .interrupted
-                // - navStatus = .stopped
-                // - if location unclear, ask for location type
-                // log "Boat moored/anchored"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                let instances = rt.instances
+
+                // Trip is "interrupted" while safely moored mid-trip
+                trip.tripStatus = .interrupted
+                instances.navStatus = .stopped
+
+                // Default mooring type depending on zone
+                switch instances.currentNavZone {
+                case .harbour:
+                    instances.mooringUsed = .mooredOnShore
+                case .buoyField:
+                    instances.mooringUsed = .mooringBall
+                default:
+                    instances.mooringUsed = .mooredOnShore
+                }
+
+                instances.onCourse = false
+                instances.SOG = 0.0
+                instances.STW = 0.0
+
+                ActionRegistry.logSimple("Boat moored in \(instances.currentNavZone.rawValue).", using: rt.context)
             }
         )
+
+
 
         reg.add(
             "A8A",
@@ -327,12 +580,23 @@ extension ActionRegistry {
                 rt.instances.currentNavZone == NavZone.anchorage
             },
             handler: { rt in
-                // TODO:
-                // - mooringType = .anchor
-                // - trip.state = .interrupted
-                // - navStatus = .stopped
-                // log "Anchor dropped" or re-use "Boat moored/anchored"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                let instances = rt.instances
+
+                trip.tripStatus = .interrupted
+                instances.navStatus = .stopped
+                instances.mooringUsed = .atAnchor
+                instances.onCourse = false
+                instances.SOG = 0.0
+                instances.STW = 0.0
+
+                ActionRegistry.logSimple("Anchor dropped.", using: rt.context)
             }
+
         )
 
         reg.add(
@@ -368,71 +632,186 @@ extension ActionRegistry {
         )
 
         // MARK: - Zone enter/leave A11*
-        let A11HR_InHarbourHandler: ActionHandler = { runtime in
-            await handleInHarbourAction(runtime: runtime)
-        }
-        reg.add("A11H",
-                title: "Leave harbour",
-                group: .navigation,
-                isVisible: { rt in
-                    isUnderway(rt) && rt.instances.currentNavZone == NavZone.harbour }
-        )
+        /*let A11HR_InHarbourHandler: ActionHandler = { runtime in
+            await handleInHarbourAction(runtime: runtime)*/
         
-        reg.add("A11HR",
-                title: "In harbour",
-                group: .navigation,
-                isVisible: { rt in
-                    isUnderway(rt) && rt.instances.currentNavZone == NavZone.coastal }
-        )
-        reg.add(
-            "A11H",
-            title: "In harbour",
-            group: .navigation,
-            isVisible: { rt in
-                isUnderway(rt) && rt.instances.currentNavZone == NavZone.coastal
-            },
-            handler: A11HR_InHarbourHandler
-        )
-        reg.add("A11A",  title: "Leave anchorage",  group: .navigation, isVisible: { rt in
-            isUnderway(rt) && rt.instances.currentNavZone == NavZone.anchorage })
-        reg.add("A11AR", title: "In anchorage",     group: .navigation, isVisible: { rt in
-            isUnderway(rt) && rt.instances.currentNavZone == NavZone.coastal })
-        reg.add("A11B",  title: "Leave buoy field", group: .navigation, isVisible: { rt in
-            isUnderway(rt) && rt.instances.currentNavZone == NavZone.buoyField })
-        reg.add("A11BR", title: "In buoy field",    group: .navigation, isVisible: { rt in
-            isUnderway(rt) && rt.instances.currentNavZone == NavZone.coastal })
+        // MARK: - Harbour / anchorage / buoy field A11x
 
-        // TODO: fill in visibility & handlers based on navZone + mooringType
+        reg.add("A11H",  title: "Leave harbour",   group: .navigation, isVisible: { rt in
+            isUnderway(rt) && rt.instances.currentNavZone == .harbour
+        }, handler: { rt in
+            // Leaving harbour -> coastal zone, keep propulsion/navStatus as-is
+            rt.instances.currentNavZone = .coastal
+            ActionRegistry.logSimple("Left harbour, now in coastal waters.", using: rt.context)
+        })
+
+        reg.add("A11HR", title: "In harbour",      group: .navigation, isVisible: { rt in
+            // Used mainly from approach (S6/S6s) to enter harbour
+            isUnderway(rt) && rt.instances.currentNavZone == .approach
+        }, handler: { rt in
+            rt.instances.currentNavZone = .harbour
+            rt.instances.onCourse = false   // we’ve reached the destination harbour, no longer “on route”
+            ActionRegistry.logSimple("Entered harbour.", using: rt.context)
+        })
+
+        reg.add("A11A",  title: "Leave anchorage", group: .navigation, isVisible: { rt in
+            isUnderway(rt) && rt.instances.currentNavZone == .anchorage
+        }, handler: { rt in
+            rt.instances.currentNavZone = .coastal
+            ActionRegistry.logSimple("Left anchorage, now in coastal waters.", using: rt.context)
+        })
+
+        reg.add("A11AR", title: "In anchorage",    group: .navigation, isVisible: { rt in
+            isUnderway(rt) && rt.instances.currentNavZone == .approach
+        }, handler: { rt in
+            rt.instances.currentNavZone = .anchorage
+            rt.instances.onCourse = false
+            ActionRegistry.logSimple("Arrived in anchorage.", using: rt.context)
+        })
+
+        reg.add("A11B",  title: "Leave buoy field", group: .navigation, isVisible: { rt in
+            isUnderway(rt) && rt.instances.currentNavZone == .buoyField
+        }, handler: { rt in
+            rt.instances.currentNavZone = .coastal
+            ActionRegistry.logSimple("Left buoy field, now in coastal waters.", using: rt.context)
+        })
+
+        reg.add("A11BR", title: "In buoy field",    group: .navigation, isVisible: { rt in
+            isUnderway(rt) && rt.instances.currentNavZone == .approach
+        }, handler: { rt in
+            rt.instances.currentNavZone = .buoyField
+            rt.instances.onCourse = false
+            ActionRegistry.logSimple("Arrived in buoy field.", using: rt.context)
+        })
 
         // MARK: - Zones A12..A15
 
-        reg.add("A12", title: "Protected water", group: .navigation, isVisible: { rt in
-            isUnderway(rt) && !(rt.instances.currentNavZone == NavZone.protectedWater) })
-        reg.add("A13", title: "Coastal zone",    group: .navigation, isVisible: { rt in
-            isUnderway(rt) && !(rt.instances.currentNavZone == NavZone.coastal) })
-        reg.add("A14", title: "Open sea",        group: .navigation, isVisible: { rt in
-            isUnderway(rt) && !(rt.instances.currentNavZone == NavZone.openSea) })
-        reg.add("A15", title: "Intracoastal",    group: .navigation, isVisible: { rt in
-            isUnderway(rt) && !(rt.instances.currentNavZone == NavZone.intracoastalWaterway) })
+        reg.add("A12", title: "Protected water", group: .navigation,
+                isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .protectedWater },
+                handler: { rt in
+                    rt.instances.currentNavZone = .protectedWater
+                    ActionRegistry.logSimple("Changed zone: now in protected waters.", using: rt.context)
+                })
 
-        // TODO: toggle navZone / environment, log zone change
+        reg.add("A13", title: "Coastal zone",    group: .navigation,
+                isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .coastal },
+                handler: { rt in
+                    rt.instances.currentNavZone = .coastal
+                    ActionRegistry.logSimple("Changed zone: now in coastal waters.", using: rt.context)
+                })
+
+        reg.add("A14", title: "Open sea",        group: .navigation,
+                isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .openSea },
+                handler: { rt in
+                    rt.instances.currentNavZone = .openSea
+                    ActionRegistry.logSimple("Changed zone: now in open sea.", using: rt.context)
+                })
+
+        reg.add("A15", title: "Intracoastal",    group: .navigation,
+                isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .intracoastalWaterway },
+                handler: { rt in
+                    rt.instances.currentNavZone = .intracoastalWaterway
+                    ActionRegistry.logSimple("Changed zone: now in intracoastal waterway.", using: rt.context)
+                })
+
 
         // MARK: - Approach / deviating / clear dangers A16..A21
 
-        reg.add("A16", title: "Approach",          group: .navigation, isVisible: { rt in
-            isUnderway(rt) && !(rt.instances.currentNavZone == NavZone.openSea)} )
-        reg.add("A17", title: "Heave to",          group: .navigation, isVisible: { rt in
-            isUnderway(rt) && isSailing(rt)})
-        reg.add("A18", title: "Bare poles",        group: .navigation, isVisible: { rt in
-            isUnderway(rt) && isSailboat(rt)})
-        reg.add("A19", title: "Dangers cleared",   group: .navigation, isVisible: { rt in
-            isUnderway(rt) && isDangerPresent(rt)})
-        reg.add("A20", title: "Back on track",    group: .navigation, isVisible: {rt in isUnderway(rt) && !rt.instances.onCourse})
-        reg.add("A21", title: "Req deviation", group: .navigation, isVisible: {rt in isUnderway(rt)})
+        reg.add(
+            "A16",
+            title: "Approach",
+            group: .navigation,
+            isVisible: { rt in
+                isUnderway(rt) && rt.instances.currentNavZone != .openSea
+            },
+            handler: { rt in
+                // Enter generic “approach” mode; actual harbour/anchorage/buoy field
+                // will be chosen later via A11HR / A11AR / A11BR.
+                rt.instances.currentNavZone = .approach
+                rt.instances.onCourse = true   // still going to the intended place, just in approach phase
+                ActionRegistry.logSimple("Started approach to destination.", using: rt.context)
+            }
+        )
 
-        // TODO for each: set appropriate instances flags (danger state, route deviation…)
+        reg.add(
+            "A17",
+            title: "Heave to",
+            group: .navigation,
+            isVisible: { rt in
+                isUnderway(rt) && isSailing(rt)
+            },
+            handler: { rt in
+                rt.instances.navStatus = .heaveto
+                rt.instances.currentSpeed = 0
+                rt.instances.onCourse = false
+                ActionRegistry.logSimple("Boat hove to.", using: rt.context)
+            }
+        )
 
-        // MARK: - Waypoints / navigation A23..A24
+        reg.add(
+            "A18",
+            title: "Bare poles",
+            group: .navigation,
+            isVisible: { rt in
+                isUnderway(rt) && isSailboat(rt)
+            },
+            handler: { rt in
+                rt.instances.navStatus = .barepoles
+                rt.instances.propulsion = .none
+                rt.instances.currentSpeed = 0
+                rt.instances.onCourse = false
+                ActionRegistry.logSimple("Boat under bare poles.", using: rt.context)
+            }
+        )
+
+        reg.add(
+            "A19",
+            title: "Dangers cleared",
+            group: .navigation,
+            isVisible: { rt in
+                isUnderway(rt) && isDangerPresent(rt)
+            },
+            handler: { rt in
+                rt.instances.environmentDangers = [.none]
+                ActionRegistry.logSimple("Dangers cleared.", using: rt.context)
+            }
+        )
+
+        reg.add(
+            "A20",
+            title: "Back on track",
+            group: .navigation,
+            isVisible: { rt in
+                isUnderway(rt) && !rt.instances.onCourse
+            },
+            handler: { rt in
+                rt.instances.onCourse = true
+                ActionRegistry.logSimple("Back on planned track.", using: rt.context)
+            }
+        )
+
+        reg.add(
+            "A21",
+            title: "Req deviation",
+            group: .navigation,
+            isVisible: { rt in isUnderway(rt) },
+            handler: { rt in
+                rt.instances.onCourse = false
+                ActionRegistry.logSimple("Route deviation required.", using: rt.context)
+            }
+        )
+
+        // Traffic lane (S45/S55)
+        reg.add(
+            "A22",
+            title: "Traffic Lane",
+            group: .navigation,
+            isVisible: { rt in isUnderway(rt) },
+            handler: { rt in
+                rt.instances.currentNavZone = .traffic
+                ActionRegistry.logSimple("Entered traffic lane.", using: rt.context)
+            }
+        )
 
         reg.add("A23", title: "Change course",      group: .navigation, isVisible: {rt in isUnderway(rt)})
         reg.add("A24", title: "Course to waypoint", group: .navigation, isVisible: {rt in isUnderway(rt) && rt.instances.nextWPT != nil} )
@@ -473,161 +852,414 @@ extension ActionRegistry {
             }
         )
 
-        // MARK: - Sail plan (set/drop) A27..A32
+        // MARK: - Sail plan A27–A32
 
         reg.add("A27",
-                title: "Set all sails",
-                group: .environment,
-                isVisible: {rt in isClassicalSloop(rt) && isUnderway(rt) && (rt.instances.propulsion == PropulsionTool.motor || rt.instances.propulsion == PropulsionTool.none)}
-        )
-        reg.add("A27R",
-                title: "Drop all sails",
-                group: .environment,
-                isVisible: {rt in isClassicalSloop(rt) && propulsionIsSailOrMotorsail(rt)}
-        )
-        reg.add("A27W",
-                title: "Wing On Wing",
-                group: .environment,
-                isVisible: {rt in
-            let boat = rt.instances.selectedBoat
-            return isClassicalSloop(rt)
-            && boat.isHeadsailSet
-            && boat.isMainSailSet
-            && rt.instances.pointOfSail == PointOfSail.running
-            && !rt.instances.wingOnWing
-        }
-        )
-        
-        reg.add("A27WR",
-                title: "On Same Tack",
-                group: .environment,
-                isVisible: {rt in
-            let boat = rt.instances.selectedBoat
-            return isClassicalSloop(rt)
-            && boat.isHeadsailSet
-            && boat.isMainSailSet
-            && rt.instances.pointOfSail == PointOfSail.running
-            && rt.instances.wingOnWing
-        }
-        )
-        reg.add("A28",  title: "Change sail plan",group: .environment)
-        reg.add("A29",  title: "Set genoa",       group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            return boat.isClassicalSloop()
-                && !boat.isHeadsailSet
-        },)
-        reg.add("A29R", title: "Drop genoa",      group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            return boat.isClassicalSloop()
-                && boat.isHeadsailSet
-        },)
-        reg.add("A30",  title: "Set mainsail",    group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            return boat.isClassicalSloop()
-                && (boat.mainSail?.currentState.isSet == false)
-        },)
-        reg.add("A30R", title: "Drop mainsail",   group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            return boat.isClassicalSloop()
-                && (boat.mainSail?.currentState.isSet == true)
-        })
-        reg.add("A31",  title: "Set Gennaker/CO",    group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let gen = boat.gennakerSail else {
-                return false
-            }
-            // Only show "Set" when it’s not set
-            return !gen.currentState.isSet
-        })
-        reg.add("A31R", title: "Drop Gennaker/CO",   group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let gen = boat.gennakerSail else {
-                return false
-            }
-            return gen.currentState.isSet
-        })
-        reg.add("A32",  title: "Set spinnaker",   group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let spi = boat.spinnakerSail else {
-                return false
-            }
-            return !spi.currentState.isSet
-        })
-        reg.add("A32R", title: "Drop spinnaker",  group: .environment,     isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let spi = boat.spinnakerSail else {
-                return false
-            }
-            return spi.currentState.isSet
-        },)
+                title: "sails set",
+                group: .sailPlan,
+          systemImage: "sail.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    return boat.mainSail != nil || boat.headsail != nil
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    var changed = false
 
-        // TODO: these will look at boat.sails states and instances.propulsionTool
+                    if let main = boat.mainSail {
+                        main.currentState = .full
+                        changed = true
+                    }
+                    if let head = boat.headsail {
+                        head.currentState = .full
+                        changed = true
+                    }
 
-        // MARK: - Reef / furl main & genoa A33..A38
-
-        reg.add("A33R", title: "Reef mainsail",   group: .environment,     isVisible: { rt in
+                    guard changed else { return }
+            let nmain = boat.headsail?.nameOfSail
+            let nhead = boat.mainSail?.nameOfSail
             
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let main = boat.mainSail, main.canReefFurther else {
-                return false
-            }
-            return main.canReduce
-        })
-        
-        reg.add("A33F", title: "Furl mainsail",   group: .environment,     isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let main = boat.mainSail, main.canFurlFurther else {
-                return false
-            }
-            return main.canReduce
-        })
-        
-        reg.add("A34",  title: "Full mainsail",   group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let main = boat.mainSail else {
-                return false
-            }
-            return main.canIncrease
-        })
-        reg.add("A35R", title: "Reef genoa",      group: .environment,     isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let head = boat.headsail, head.reducedWithReefs else {
-                return false
-            }
-            return head.canReduce
-        })
-        reg.add("A35F", title: "Furl genoa",      group: .environment,     isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let head = boat.headsail, head.reducedWithFurling else {
-                return false
-            }
-            return head.canReduce
-        })
-        reg.add("A36",  title: "Full genoa",      group: .environment, isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let head = boat.headsail else {
-                return false
-            }
-            return head.canIncrease
-        })
-        
-        reg.add("A37",  title: "Increase mainsail", group: .environment,isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let main = boat.mainSail else {
-                return false
-            }
-            return main.canIncrease
-        })
-        
-        reg.add("A38",  title: "Increase genoa",    group: .environment,isVisible: { rt in
-            let boat = rt.instances.selectedBoat
-            guard boat.isClassicalSloop(), let head = boat.headsail else {
-                return false
-            }
-            return head.canIncrease
-        })
+            finishSailChange(rt, logText: "Raised \(nmain ?? "main") and \(nhead ?? "jib")")
+                })
 
-        // TODO: implement reef/furl logic using Boat.sails and Instances
+        reg.add("A27R",
+                title: "sails downed",
+                group: .sailPlan,
+                systemImage: "sail.slash.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    return boat.sails.contains { $0.currentState.isSet }
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    var changed = false
+
+                    for sail in boat.sails {
+                        if sail.currentState.isSet {
+                            fullyDrop(sail)
+                            changed = true
+                        }
+                    }
+
+                    guard changed else { return }
+                    rt.instances.wingOnWing = false
+                    finishSailChange(rt, logText: "All sails lowered")
+                })
+
+        reg.add("A27W",
+                title: "Wing on wing",
+                group: .sailPlan,
+                systemImage: "wind",
+                isVisible: { rt in
+                    !rt.instances.wingOnWing
+                },
+                handler: { rt in
+                    rt.instances.wingOnWing = true
+                    ActionRegistry.logSimple("Sailing wing on wing", using: rt.context)
+                   // rt.rederiveSituation()
+                })
+
+        reg.add("A27WR",
+                title: "Sails on tack",
+                group: .sailPlan,
+                systemImage: "wind.slash",
+                isVisible: { rt in
+                    rt.instances.wingOnWing
+                },
+                handler: { rt in
+                    rt.instances.wingOnWing = false
+                    ActionRegistry.logSimple("Sails back on same tack", using: rt.context)
+                    //rt.rederiveSituation()
+                })
+
+        // In ActnRegistry+Build.swift, inside makeDefault()
+        reg.add(
+            "A28",
+            title: "sails modified",
+            group: .environment,
+            isVisible: { rt in
+                // your existing visibility predicate
+                propulsionIsSailOrMotorsail(rt)
+            },
+            handler: { rt in
+                // Present the sheet from LogActionView; usually via some state
+                //rt.showSailPlanSheet()
+            }
+        )
+
+
+        
+        reg.add("A29",
+                title: "jib set",
+                group: .sailPlan,
+                systemImage: "sail",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return false }
+                    return !head.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return }
+                    head.currentState = .full
+                    let njib = boat.headsail?.nameOfSail
+            finishSailChange(rt, logText: "\(njib ?? "jib") is set")
+                })
+
+        reg.add("A29R",
+                title: "jib full furled",
+                group: .sailPlan,
+                systemImage: "sail.slash",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return false }
+                    return head.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return }
+                    fullyDrop(head)
+                    var action = "down"
+                    if (head.reducedWithFurling) {action = "fully furled"}
+                    let nhead = boat.headsail?.nameOfSail
+            finishSailChange(rt, logText: "\(nhead ?? "jib") \(action)")
+                })
+
+        reg.add("A30",
+                title: "main hoisted",
+                group: .sailPlan,
+                systemImage: "triangle.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return false }
+                    return !main.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return }
+                    main.currentState = .full
+                    let nmain = main.nameOfSail
+                    finishSailChange(rt, logText: "\(nmain) hoisted.")
+                })
+
+        reg.add("A30R",
+                title: "main down",
+                group: .sailPlan,
+                systemImage: "triangle.slash.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return false }
+                    return main.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return }
+                    fullyDrop(main)
+                    let nmain = main.nameOfSail
+                    var action = "lowered"
+                    if main.reducedWithFurling { action = "furled" }
+                    finishSailChange(rt, logText: "\(nmain) \(action).")
+                })
+
+        reg.add("A31",
+                title: "Gennaker set",
+                group: .sailPlan,
+                systemImage: "flag.circle",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let gen = boat.gennakerSail else { return false }
+                    return !gen.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let gen = boat.gennakerSail else { return }
+                    gen.currentState = .full
+                    finishSailChange(rt, logText: "Gennaker deployed.")
+                })
+
+        reg.add("A31R",
+                title: "gennaker down/furled",
+                group: .sailPlan,
+                systemImage: "flag.slash.circle",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let gen = boat.gennakerSail else { return false }
+                    return gen.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let gen = boat.gennakerSail else { return }
+                    fullyDrop(gen)
+                    finishSailChange(rt, logText: "Gennaker furled/lowered.")
+                })
+
+        reg.add("A32",
+                title: "spinnaker set",
+                group: .sailPlan,
+                systemImage: "flag.square",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let spi = boat.spinnakerSail else { return false }
+                    return !spi.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let spi = boat.spinnakerSail else { return }
+                    spi.currentState = .full
+                    finishSailChange(rt, logText: "Spinnaker set.")
+                })
+
+        reg.add("A32R",
+                title: "spinnaker down",
+                group: .sailPlan,
+                systemImage: "flag.square.slash",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let spi = boat.spinnakerSail else { return false }
+                    return spi.currentState.isSet
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let spi = boat.spinnakerSail else { return }
+                    fullyDrop(spi)
+                    finishSailChange(rt, logText: "Spinnaker down.")
+                })
+
+        // MARK: - Reef / furl mainsail & headsail A33–A38
+
+        reg.add("A33R",
+                title: "mainsail reefed",
+                group: .sailPlan,
+                systemImage: "triangle.lefthalf.filled",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return false }
+                    return main.reducedWithReefs
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return }
+
+                    guard reduceOnce(main) else {
+                        rt.context.showBanner("No further reef available on mainsail.")
+                        return
+                    }
+                    let curpos = boat.mainSail?.currentState.rawValue ?? "?"
+                    let nmain = main.nameOfSail
+                    finishSailChange(rt, logText: "\(nmain) reefed to \(curpos).")
+                })
+
+        reg.add("A33F",
+                title: "mainsail reduced",
+                group: .sailPlan,
+                systemImage: "triangle.lefthalf.filled",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return false }
+                    return main.reducedWithFurling
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return }
+
+                    guard reduceOnce(main) else {
+                        rt.context.showBanner("No further furl available on mainsail.")
+                        return
+                    }
+                    let nmain = main.nameOfSail
+                    let curpos = boat.mainSail?.currentState.rawValue ?? "?"
+                    finishSailChange(rt, logText: "\(nmain) \(curpos).")
+                })
+
+        reg.add("A34",
+                title: "mainsail full",
+                group: .sailPlan,
+                systemImage: "triangle.filled",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return false }
+                    return main.isReduced
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return }
+
+                    guard setFull(main) else {
+                        rt.context.showBanner("Mainsail is already fully set.")
+                        return
+                    }
+                    let nmain = main.nameOfSail
+                    finishSailChange(rt, logText: "\(nmain) full")
+                })
+
+        reg.add("A35R", //review text
+                title: "jib reefed",
+                group: .sailPlan,
+                systemImage: "sail.and.arrow.down.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return false }
+                    return head.reducedWithReefs
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return }
+
+                    guard reduceOnce(head) else {
+                        rt.context.showBanner("No further reduction available on headsail.")
+                        return
+                    }
+                    let nhead = boat.headsail?.nameOfSail
+                    let curpos = boat.headsail?.currentState.rawValue ?? "?"
+            finishSailChange(rt, logText: "\(nhead ?? "jib") reefed to \(curpos)")
+                })
+
+        reg.add("A35F", //review action, rebuild text
+                title: "jib reduced",
+                group: .sailPlan,
+                systemImage: "sail.and.arrow.down.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return false }
+            return head.reducedWithFurling && head.canReduce
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return }
+
+                    guard reduceOnce(head) else {
+                        rt.context.showBanner("No further furl available on headsail.")
+                        return
+                    }
+            let nhead = boat.headsail?.nameOfSail ?? "jib"
+            let curpos = boat.headsail?.currentState.rawValue ?? "?"
+            finishSailChange(rt, logText: "\(nhead) \(curpos)")
+                })
+        
+        reg.add("A36", //make again
+                title: "jib full",
+                group: .sailPlan,
+                systemImage: "sail.and.arrow.up.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return false }
+                    return head.canIncrease
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let head = boat.headsail else { return }
+
+                    guard setFull(head) else {
+                        rt.context.showBanner("Headsail is already fully set.")
+                        return
+                    }
+                    let nhead = boat.headsail?.nameOfSail
+            finishSailChange(rt, logText: "\(nhead ?? "jib") full")
+                })
+        
+        reg.add("A37", //adjust text
+                title: "main reef dropped",
+                group: .sailPlan,
+                systemImage: "triangle.righthalf.filled",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return false }
+                    return main.canIncrease
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    guard let main = boat.mainSail else { return }
+
+                    guard increaseOnce(main) else {
+                        rt.context.showBanner("Mainsail is already fully set.")
+                        return
+                    }
+                    let nmain = main.nameOfSail
+                    let curpos = main.currentState
+                    finishSailChange(rt, logText: "\(nmain) increased to \(curpos)")
+                })
+
+        reg.add("A38", //review action and text
+                title: "jib increased",
+                group: .sailPlan,
+                systemImage: "sailboat.fill",
+                isVisible: { rt in
+                    let boat = rt.instances.selectedBoat
+                    let headCan = boat.headsail?.canIncrease ?? false
+                    return headCan
+                },
+                handler: { rt in
+                    let boat = rt.instances.selectedBoat
+                    var changed = false
+                    if let head = boat.headsail, head.canIncrease {
+                        changed = increaseOnce(head) || changed
+                    }
+
+                    guard changed else { return }
+                    let nmain = boat.mainSail?.nameOfSail ?? "main"
+                    let curpos = boat.mainSail?.currentState.rawValue ?? "?"
+                    finishSailChange(rt, logText: "\(nmain) increased to \(curpos)")
+                })
 
         // MARK: - AWA / shape / storm tactics A39..A48
 
@@ -718,16 +1350,24 @@ extension ActionRegistry {
 
         reg.add(
             "AF2",
-            title: "Start motor",
+            title: "Start engine",
             group: .motor,
             systemImage: "engine.combustion",
-            isEmphasised: true,
-            isVisible: { rt in hasSingleInboardMotorStopped(rt) },
+            isVisible: { rt in hasSingleInboardMotorStopped(rt) && !hasSeveralMotors(rt) },
             handler: { rt in
-                // Recommended:
-                // - set propulsion motor state = .neutral (engine running, not engaged)
-                // - update propulsionTool if you want
-                // - log "Main motor started"
+                let boat = rt.instances.selectedBoat
+                guard let idx = propulsionMotorIndex(in: boat) else {
+                    rt.showBanner("No propulsion motor configured.")
+                    return
+                }
+
+                // Engine ON, initially in neutral (unclutched)
+                boat.motors[idx].state = .neutral
+
+                // Recompute propulsion (.motor / .motorsail / .sail / .none)
+                rt.instances.propulsion = rt.instances.currentPropulsionTool()
+
+                ActionRegistry.logSimple("Main engine started.", using: rt.context)
             }
         )
 
@@ -739,9 +1379,19 @@ extension ActionRegistry {
             isEmphasised: true,
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
             handler: { rt in
-                // - set propulsion motor state = .stopped
-                // - update propulsionTool (.sail or .none)
-                // - log "Main motor stopped"
+                let boat = rt.instances.selectedBoat
+                guard let idx = propulsionMotorIndex(in: boat) else {
+                    rt.showBanner("No propulsion motor configured.")
+                    return
+                }
+
+                // Engine OFF
+                boat.motors[idx].state = .stopped
+
+                // Recompute propulsion (might become .sail or .none)
+                rt.instances.propulsion = rt.instances.currentPropulsionTool()
+
+                ActionRegistry.logSimple("Main engine stopped.", using: rt.context)
             }
         )
 
@@ -754,6 +1404,15 @@ extension ActionRegistry {
             handler: { rt in
                 // TODO: show motor sheet, set Motor.state according to user
                 // log according to what changed
+            }
+        )
+        reg.add(
+            "AF2S",
+            title: "\u{26F5}", // sailboat character for sail parameter
+            group: .environment,
+            handler: { rt in
+                // Present the sheet from LogActionView; usually via some state
+                //rt.showSailPlanSheet()
             }
         )
 
@@ -917,6 +1576,20 @@ extension ActionRegistry {
                 // log "Rig added: [rigUsed]"
             }
         )
+        
+        // Energy and Water Levels
+        
+        reg.add(
+            "AF18",
+            title: "Levels",
+            group: .motor,
+            systemImage: "",
+            isEmphasised: false,
+            isVisible: { rt in !rt.instances.selectedBoat.extraRiggingItems.isEmpty},
+            handler: { rt in
+                // TODO: if boat.extraRigs not empty, show list of checkboxes, update rigsUsed
+                // log "Rig added: [rigUsed]"
+            })
 
         // MARK: - EM emergency management (all require emergencyState == true)
 

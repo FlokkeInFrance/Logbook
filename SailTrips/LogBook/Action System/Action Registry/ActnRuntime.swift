@@ -15,10 +15,8 @@ struct ActionRuntime {
     var modelContext: ModelContext { context.modelContext }
     var showBanner: (String) -> Void { context.showBanner }
     var openDangerSheet: (ActionVariant) -> Void { context.openDangerSheet }
-    let A11HR_InHarbourHandler: ActionHandler = { runtime in
-        await handleInHarbourAction(runtime: runtime)
-    }
 
-    // Convenience if you add more to ActionContext later (e.g. locations, tripDestination)
+    // You can add convenience helpers here later if needed
 }
+
 

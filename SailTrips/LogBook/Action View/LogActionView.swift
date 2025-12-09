@@ -28,35 +28,41 @@ import SwiftData
 
 struct LogActionView: View {
     // MARK: - Inputs
-
+    
     @Bindable var instances: Instances
-
+    
     let showBanner: (String) -> Void
     let openDangerSheet: (ActionVariant) -> Void
     let onClose: () -> Void
-
+    
     @Environment(\.modelContext) private var modelContext
-
+    
     private let registry = ActionRegistry.makeDefault()
-
+    
     // situations come from registry (static map / helper in your extension)
     private var situations: [SituationDefinition] {
         ActionRegistry.allSituations
         // If you named it differently, e.g. `allSituationDefinitions`,
         // replace with that.
     }
-
+    
     // MARK: - State
-
+    
     /// Currently selected situation (for v1, chosen manually).
     @State private var currentSituationID: SituationID
-
+    
     /// Optional toast/banner text (short feedback after actions).
     @State private var bannerText: String?
     @State private var showBannerView: Bool = false
-
+    
+    //addition states for sheets
+    
+    @State private var showSailPlanSheet = false
+    @State private var sailPlanRuntime: ActionRuntime? = nil
+    
+    
     // MARK: - Init
-
+    
     init(
         instances: Instances,
         initialSituationID: SituationID? = nil,
@@ -68,14 +74,15 @@ struct LogActionView: View {
         self.showBanner = showBanner
         self.openDangerSheet = openDangerSheet
         self.onClose = onClose
-
-        // Default to provided initial ID, or first situation, or S1.
-        let fallbackID: SituationID = ActionRegistry.allSituations.first?.id ?? .s1PreparingTrip
-        _currentSituationID = State(initialValue: initialSituationID ?? fallbackID)
+        
+        // Derive from instances if caller doesn't force a situation
+        let derived = instances.derivedSituationID()
+        _currentSituationID = State(initialValue: initialSituationID ?? derived)
     }
-
+    
+    
     // MARK: - Derived context
-
+    
     private var actionContext: ActionContext {
         ActionContext(
             instances: instances,
@@ -97,18 +104,19 @@ struct LogActionView: View {
             openDangerSheet: openDangerSheet
         )
     }
-
+    
     /// Current situation definition (if any).
     private var currentDefinition: SituationDefinition? {
         situations.first { $0.id == currentSituationID }
     }
-
+    
     /// AF tags for the permanent top bar (fixed list).
     private let topAFTags: [String] = [
         "AF1",  // Danger spotted
         "AF2",  // Start motor
         "AF2R", // Stop motor
         "AF21", // Motors (multi-motor sheet)
+        "AF2S", // Sails for Motor
         "AF3N", // Night
         "AF3D", // Day
         "AF4",  // Failure report
@@ -125,47 +133,47 @@ struct LogActionView: View {
         "AF16", // Goto next WPT
         "AF17"  // Extra rigging
     ]
-
+    
     // MARK: - Fixed AF groups (layout)
-
+    
     /// First line: emergency actions (bigger, red buttons)
     private let emergencyTags: [String] = [
         "E1", "E2", "E3", "E4"
     ]
-
+    
     /// Second line: checklists & incidents
     private let checklistIncidentTags: [String] = [
         "AF8", "AF7", "AF4"
     ]
-
+    
     /// Third line: motor
     private let motorTags: [String] = [
-        "AF2", "AF2R", "AF21"
+        "AF2", "AF2R", "AF21", "AF2S"
     ]
-
+    
     /// Fourth line: navigation
     private let navigationTags: [String] = [
         "AF12", "AF14", "AF11", "AF16"
     ]
-
+    
     /// Fifth line: environment
     private let environmentTags: [String] = [
         "AF3", "AF9", "AF10", "AF1"
     ]
-
+    
     /// Sixth line: other logs
     private let otherLogTags: [String] = [
         "AF5", "AF6", "AF15"
     ]
-
-
+    
+    
     /// Grid layout: 4 items per row.
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
     }
-
+    
     // MARK: - Body
-
+    
     var body: some View {
         ZStack(alignment: .bottom) {
             VStack(spacing: 0) {
@@ -178,7 +186,7 @@ struct LogActionView: View {
                 bottomBar
             }
             .background(Color(.systemBackground))
-
+            
             if showBannerView, let bannerText {
                 banner(bannerText)
                     .padding(.bottom, 8)
@@ -186,18 +194,28 @@ struct LogActionView: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showBannerView)
+        .sheet(isPresented: $showSailPlanSheet, onDismiss: {
+            currentSituationID = instances.derivedSituationID()
+        }) {
+            if let rt = sailPlanRuntime {
+                SailPlanSheet(runtime: rt)
+            }
+        }
+
+        
+        
     }
-
+    
     // MARK: - Title bar with situation picker
-
+    
     private var titleBar: some View {
         HStack {
             Text("Action Log")
                 .font(.title2)
                 .fontWeight(.semibold)
-
+            
             Spacer()
-
+            
             if !situations.isEmpty {
                 Menu {
                     Picker("Situation", selection: $currentSituationID) {
@@ -214,12 +232,12 @@ struct LogActionView: View {
         }
         .padding([.horizontal, .top])
     }
-
+    
     // MARK: - Fixed AF bar
-
+    
     private var topFixedAFBar: some View {
         let ctx = actionContext
-
+        
         func variants(for tags: [String]) -> [ActionVariant] {
             tags.compactMap { registry.variant(for: $0) }
                 .filter { variant in
@@ -227,16 +245,16 @@ struct LogActionView: View {
                     return variant.isVisible(runtime)
                 }
         }
-
+        
         let emergency    = variants(for: emergencyTags)
         let checklistInc = variants(for: checklistIncidentTags)
         let motor        = variants(for: motorTags)
         let navigation   = variants(for: navigationTags)
         let environment  = variants(for: environmentTags)
         let otherLogs    = variants(for: otherLogTags)
-
+        
         return VStack(spacing: 6) {
-
+            
             // 1. Emergencies row – red, bigger, spread across the line
             if !emergency.isEmpty {
                 HStack(spacing: 8) {
@@ -270,9 +288,9 @@ struct LogActionView: View {
                 .padding(.horizontal, 8)
                 .padding(.top, 4)
             }
-
-
-
+            
+            
+            
             // 2–6. Remaining rows
             if !checklistInc.isEmpty { row(checklistInc) }
             if !motor.isEmpty        { row(motor) }
@@ -313,14 +331,14 @@ struct LogActionView: View {
         }
         .padding(.horizontal, 8)
     }
-
+    
     /// Compact label (max 3 letters) for AF buttons, when no `systemImage` is set.
     private func shortLabel(for variant: ActionVariant) -> LocalizedStringKey {
         variant.title
     }
-
+    
     // MARK: - Situation-dependent action grid
-
+    
     private var actionGrid: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
@@ -329,7 +347,7 @@ struct LogActionView: View {
                         .font(.headline)
                         .padding(.horizontal)
                         .padding(.top, 8)
-
+                    
                     LazyVGrid(columns: gridColumns, spacing: 8) {
                         ForEach(visibleContextualVariants(for: def)) { variant in
                             actionButton(for: variant)
@@ -345,9 +363,9 @@ struct LogActionView: View {
             }
         }
     }
-
+    
     // MARK: - Bottom bar
-
+    
     private var bottomBar: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
@@ -357,9 +375,9 @@ struct LogActionView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-
+            
             Spacer()
-
+            
             Button {
                 onClose()
             } label: {
@@ -372,9 +390,9 @@ struct LogActionView: View {
         .padding(.vertical, 6)
         .background(Color(.systemBackground))
     }
-
+    
     // MARK: - Single action button (grid cell)
-
+    
     private func actionButton(for variant: ActionVariant) -> some View {
         Button {
             runAction(variant)
@@ -408,9 +426,9 @@ struct LogActionView: View {
         }
         .buttonStyle(.plain)
     }
-
+    
     // MARK: - Banner
-
+    
     private func banner(_ text: String) -> some View {
         Text(text)
             .font(.caption)
@@ -420,50 +438,186 @@ struct LogActionView: View {
             .clipShape(Capsule())
             .shadow(radius: 2)
     }
-
+    
     // MARK: - Helpers: visible variants
-
+    
     /// AF variants for the fixed bar, filtered by `isVisible`.
     private func visibleAFVariants() -> [ActionVariant] {
         let ctx = actionContext
-
+        
         let candidates: [ActionVariant] = topAFTags.compactMap { tag in
             registry.variant(for: tag)
         }
-
+        
         return candidates.filter { variant in
             let runtime = ActionRuntime(context: ctx, variant: variant)
             return variant.isVisible(runtime)
         }
     }
-
+    
     /// Contextual (situation-based) variants for the grid, filtered by `isVisible`
     /// and excluding AF-tags (they are handled in the top bar).
     private func visibleContextualVariants(for def: SituationDefinition) -> [ActionVariant] {
         let ctx = actionContext
         let afTagSet = Set(topAFTags)
-
+        
         let tags = def.actionTags.filter { !afTagSet.contains($0) }
-
+        
         let variants = registry.variants(for: tags)
-
+        
         return variants.filter { variant in
             let runtime = ActionRuntime(context: ctx, variant: variant)
             return variant.isVisible(runtime)
         }
     }
-
+    
     // MARK: - Run action
-
+    
+    /*private func runAction(_ variant: ActionVariant) {
+     let ctx = actionContext
+     let runtime = ActionRuntime(context: ctx, variant: variant)
+     
+     variant.handler(runtime)
+     
+     // If you already added the situation recompute earlier, keep it here:
+     let newID = deriveSituationID(from: ctx.instances)
+     currentSituationID = newID
+     }*/
+    
     private func runAction(_ variant: ActionVariant) {
-        let ctx = actionContext
-        let runtime = ActionRuntime(context: ctx, variant: variant)
-
-        Task {
-            await variant.handler(runtime)
+        // Special case: A28 "Modify canvas" opens the SailPlanSheet
+        if ((variant.tag == "A28") || (variant.tag == "AF2S")) {
+            let rt = ActionRuntime(context: actionContext, variant: variant)
+            sailPlanRuntime = rt
+            showSailPlanSheet = true
+            currentSituationID = instances.derivedSituationID()
+            return
         }
+        
+        let rt = ActionRuntime(context: actionContext, variant: variant)
+        
+        Task {
+            await variant.handler(rt)
+            
+            await MainActor.run {
+                currentSituationID = instances.derivedSituationID()
+            }
+        }
+        
+        
     }
 }
+
+
+
+// MARK: - Situation derivation
+
+func deriveSituationID(for instances: Instances) -> SituationID {
+
+    guard let trip = instances.currentTrip else {
+        return .s1PreparingTrip
+    }
+
+    // 1. Trip status as primary driver
+    switch trip.tripStatus {
+    case .preparing:   return .s1PreparingTrip
+    case .started:     return .s2TripStarted
+    case .underway:    break          // handled below
+    case .interrupted: break          // treat like underway, but can refine later
+    case .completed:   return .s1PreparingTrip // no active trip in practice
+    }
+
+    // 2. Emergency overrides everything
+    if instances.emergencyState {
+        switch instances.emergencyNature {
+        case .mob:            return .e1MOB
+        case .fire:           return .e2Fire
+        case .health:         return .e3Medical
+        case .none:           break
+        default:            return .e4OtherEmergency
+        }
+    }
+
+    // 3. Storm manoeuvre S8
+    if instances.severeWeather != .none {
+        return .s8Storm
+    }
+
+    // 4. Dangers spotted S9 / S9w (any non-[.none] array)
+    let hasDanger = instances.environmentDangers.contains { $0 != .none }
+    if hasDanger {
+        if instances.windDescription > 4 {
+            return .s9wDangerSpotStrongWind
+        } else {
+            return .s9DangerSpotLightWind
+        }
+    }
+
+    // 5. In harbour / anchorage / buoy field => S3 (S7 is defined as “same as S3”)
+    if instances.currentNavZone == .harbour ||
+       instances.currentNavZone == .anchorage ||
+       instances.currentNavZone == .buoyField {
+        return .s3InHarbourArea
+    }
+
+    // 6. Approach => S6 / S6s
+    if instances.currentNavZone == .approach {
+        if instances.propulsion == .motor || instances.propulsion == .none {
+            return .s6ApproachMotor
+        } else if instances.propulsion == .sail || instances.propulsion == .motorsail {
+            return .s6sApproachSail
+        }
+    }
+
+    // 7. Motor vs sail split for “underway” cruising situations
+    let zone = instances.currentNavZone
+    let propulsion = instances.propulsion
+
+    // --- Motor / none propulsion: S41..S45 ---
+    if propulsion == .motor || propulsion == .none {
+        switch zone {
+        case .coastal:
+            return .s41CoastalMotor
+        case .protectedWater:
+            return .s42ProtectedMotor
+        case .intracoastalWaterway:
+            return .s43WaterwayMotor
+        case .openSea:
+            return .s44OpenSeaMotor
+        case .traffic:
+            return .s45TrafficLane
+        default:
+            // Fallback: treat unknown zones like coastal motor
+            return .s41CoastalMotor
+        }
+    }
+
+    // --- Sail / motorsail propulsion: S51..S55(w) ---
+    if propulsion == .sail || propulsion == .motorsail {
+        let strongWind = instances.windDescription > 4   // “w” variants
+
+        switch zone {
+        case .coastal:
+            return strongWind ? .s51wCoastalSailStrong : .s51CoastalSail
+        case .protectedWater:
+            return strongWind ? .s52wProtectedSailStrong : .s52ProtectedSail
+        case .intracoastalWaterway:
+            return strongWind ? .s53wWaterwaySailStrong : .s53WaterwaySail
+        case .openSea:
+            return strongWind ? .s54wOpenSeaSailStrong : .s54OpenSeaSail
+        case .traffic:
+            return strongWind ? .s55wTrafficLane : .s55TrafficLane
+        default:
+            // Fallback: coastal sail
+            return strongWind ? .s51wCoastalSailStrong : .s51CoastalSail
+        }
+    }
+
+    // 8. Final fallback – still underway but nothing matched
+    return .s41CoastalMotor
+}
+
+//End of Situation Derivator
 
 // ActionRegistry+Situation.swift
 

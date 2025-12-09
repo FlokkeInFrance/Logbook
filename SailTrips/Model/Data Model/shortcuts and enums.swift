@@ -210,6 +210,7 @@ enum Emergencies: String, Codable, CaseIterable, Identifiable {
     case piracy = "piracy"
     case relay = "mayday relay"
     case none = "none"
+    case other = "other emergency"
     var id: String { rawValue }
     var label: LocalizedStringKey {
         switch self {
@@ -225,6 +226,7 @@ enum Emergencies: String, Codable, CaseIterable, Identifiable {
         case .authorityRequest: "Authority request"
         case .relay: "Mayday Relay"
         case .piracy: "Piracy"
+        case .other: "Other emergency"
         case .none: "None"
         }
     }
@@ -289,27 +291,7 @@ enum EnvironmentDangers: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-
-// MARK: - Propulsion / AP / mooring
-//Used for Instances and describes how the boat runs
-
-enum PropulsionTool: String, Codable, CaseIterable, Identifiable {
-    case motor = "motor"
-    case sail = "sails"
-    case inTow = "in_tow"
-    case motorsail = "motor_and_sail"
-    case none = "none"
-    var id: String { rawValue }
-    var label: LocalizedStringKey {
-        switch self {
-        case .motor: "Motor"
-        case .sail: "Sails"
-        case .inTow: "In tow"
-        case .motorsail: "Motor and Sail"
-        case .none: "None"
-        }
-    }
-}
+//Autopilot mode enum
 
 enum Autopilot: String, Codable, CaseIterable, Identifiable {
     case off = "off"
@@ -380,7 +362,6 @@ enum SailState: String, Codable, CaseIterable, Identifiable {
     case lightFurled = "light_furled"
     case halfFurled = "half_furled"
     case tightFurled = "tight_furled"
-    case outpoled = "outpoled"
     case outOfOrder = "out_of_order" //not a propulsion Tool anymore
     var id: String { rawValue }
     var label: LocalizedStringKey {
@@ -397,10 +378,16 @@ enum SailState: String, Codable, CaseIterable, Identifiable {
         case .lightFurled: "light_furled"
         case .halfFurled: "half_furled"
         case .tightFurled: "tight_furled"
-        case .outpoled: "outpoled"
         case .outOfOrder: "out_of_order"
         }
     }
+}
+
+enum ReductionMode: String, Codable, CaseIterable, Identifiable {
+    case none = "none"
+    case reef = "by reefing"
+    case furl = "by lowering"
+        var id: String { rawValue }
 }
 
 enum MotorState: String, Codable, CaseIterable, Identifiable {
@@ -451,10 +438,9 @@ enum CruiseStatus: String, Codable, CaseIterable, Identifiable {
         case .planned: "Planned"
         case .underway: "Ongoing"
         case .completed: "Completed"
-
+            
         }
     }
-    
 }
 
 enum TypeOfTrip: String, Codable, CaseIterable, Identifiable {
@@ -468,6 +454,27 @@ enum TypeOfTrip: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+
+// MARK: - Propulsion / TripStatus/NavStatus/NavZone
+//Used for Instances and describes how the boat runs
+
+enum PropulsionTool: String, Codable, CaseIterable, Identifiable {
+    case motor = "motor"
+    case sail = "sails"
+    case inTow = "in_tow"
+    case motorsail = "motor_and_sail"
+    case none = "none"
+    var id: String { rawValue }
+    var label: LocalizedStringKey {
+        switch self {
+        case .motor: "Motor"
+        case .sail: "Sails"
+        case .inTow: "In tow"
+        case .motorsail: "Motor and Sail"
+        case .none: "None"
+        }
+    }
+}
 enum TripStatus: String, Codable, CaseIterable, Identifiable {
     case preparing = "preparing"
     case started = "started"
@@ -482,6 +489,7 @@ enum NavStatus: String, Codable, CaseIterable, Identifiable {
     case heaveto = "heave to"
     case stopped = "moored or anchored"
     case underway = "en route"
+    case stormTactics = "storm tactics"
     case none = "none"
     var id: String { rawValue }
 }

@@ -25,6 +25,7 @@ enum ActionGroup {
     case environment
     case otherLog
     case generic
+    case sailPlan
 }
 
 enum LogActionCode: String, CaseIterable {
@@ -58,6 +59,7 @@ enum LogActionCode: String, CaseIterable {
     case A19 = "A19"
     case A20 = "A20"
     case A21 = "A21"
+    case A22 = "A22"
     case A23 = "A23"
     case A24 = "A24"
     case A24R = "A24R"
@@ -95,6 +97,7 @@ enum LogActionCode: String, CaseIterable {
     case A48 = "A48"
     case A49 = "A49"
     case A50 = "A50"
+    case A51 = "A51"
 
     case E1 = "E1"
     case E2 = "E2"
@@ -105,6 +108,7 @@ enum LogActionCode: String, CaseIterable {
     case AF2 = "AF2"
     case AF2R = "AF2R"
     case AF21 = "AF21"
+    case AF2S = "AF2S"
     case AF3N = "AF3N"
     case AF3D = "AF3D"
     case AF4 = "AF4"
@@ -160,7 +164,7 @@ enum ActionIcon {
 }*/
 
 typealias ActionVisibilityPredicate = (ActionRuntime) -> Bool
-typealias ActionHandler = (ActionRuntime) async -> Void
+typealias ActionHandler = (ActionRuntime) -> Void
 
 struct ActionVariant: Identifiable {
 
