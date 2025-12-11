@@ -920,7 +920,16 @@ extension ActionRegistry {
             }
         )
 
-        reg.add("A23", title: "Change course",      group: .navigation, isVisible: {rt in isUnderway(rt)})
+        reg.add(
+            "A23",
+            title: "Change course",
+            group: .navigation,
+            isVisible: { rt in isUnderway(rt) },
+            handler: { rt in
+                ActionRegistry.logSimple("Course change ordered.", using: rt.context)
+            }
+        )
+
         reg.add("A24", title: "Course to waypoint", group: .navigation, isVisible: {rt in isUnderway(rt) && rt.instances.nextWPT != nil} )
             
             // TODO: A24 only visible if WPT defined, onCourse = true / bearing / CTS.
@@ -1402,12 +1411,75 @@ extension ActionRegistry {
 
         // MARK: - AWA / shape / storm tactics A39..A48
 
-        reg.add("A39", title: "Tack",         group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
-        reg.add("A40", title: "Gybe",         group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
+        // MARK: - AWA / shape / storm tactics A39..A48
+
+        reg.add(
+            "A39",
+            title: "Tack",
+            group: .environment,
+            isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
+            handler: { rt in
+                let inst = rt.instances
+
+                // Special case: boat is close hauled -> just switch tack, stay close hauled, no sheet.
+                guard inst.pointOfSail == .closeHauled else {
+                    // For other points of sail the SailingGeometrySheet will handle the details.
+                    return
+                }
+
+                // Flip tack (or default to starboard if unknown)
+                switch inst.tack {
+                case .port:
+                    inst.tack = .starboard
+                case .starboard:
+                    inst.tack = .port
+                case .none:
+                    inst.tack = .starboard
+                }
+
+                let tackText = (inst.tack == .port) ? "port" : "starboard"
+
+                ActionRegistry.logSimple(
+                    "Tack: still close hauled, now on \(tackText) tack.",
+                    using: rt.context
+                )
+            }
+        )
+
+        reg.add(
+            "A40",
+            title: "Gybe",
+            group: .environment,
+            isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
+            handler: { rt in
+                // High-level log; SailingGeometrySheet will add detailed one.
+                ActionRegistry.logSimple("Preparing to gybe.", using: rt.context)
+            }
+        )
+
+        reg.add(
+            "A43",
+            title: "Fall off",
+            group: .environment,
+            isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
+            handler: { rt in
+                ActionRegistry.logSimple("Falling off from the wind.", using: rt.context)
+            }
+        )
+
+        reg.add(
+            "A44",
+            title: "Luff",
+            group: .environment,
+            isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
+            handler: { rt in
+                ActionRegistry.logSimple("Luffing up towards the wind.", using: rt.context)
+            }
+        )
+
         reg.add("A41", title: "Flatten sails",group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
         reg.add("A42", title: "Curve sails",  group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
-        reg.add("A43", title: "Fall off",     group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
-        reg.add("A44", title: "Luff",         group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
+
         reg.add("A45", title: "Run off",      group: .environment, isVisible: {rt in stormyConditions(rt)})
         reg.add("A46", title: "Forereach",    group: .environment, isVisible: {rt in stormyConditions(rt)})
         reg.add("A47", title: "Drogue",       group: .environment, isVisible: {rt in stormyConditions(rt)})
@@ -1579,7 +1651,7 @@ extension ActionRegistry {
         reg.add(
             "AF2S",
             title: "\u{26F5}", // sailboat character for sail parameter
-            group: .motors,
+            group: .motor,
             handler: { rt in
                 // Present the sheet from LogActionView; usually via some state
                 //rt.showSailPlanSheet()

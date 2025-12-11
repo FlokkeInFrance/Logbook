@@ -61,6 +61,10 @@ struct LogActionView: View {
     @State private var sailPlanRuntime: ActionRuntime? = nil
     @State private var autopilotRuntime: ActionRuntime? = nil
     @State private var showAutopilotSheet = false
+  
+    @State private var showSailingSheet = false
+    @State private var sailingRuntime: ActionRuntime? = nil
+
     
     // state for text prompt (one line of text)
     @State private var textPromptRequest: ActionTextPromptRequest?
@@ -237,7 +241,6 @@ struct LogActionView: View {
         .animation(.easeInOut(duration: 0.25), value: showBannerView)
         .sheet(isPresented: $showSailPlanSheet, onDismiss: {
             currentSituationID = instances.derivedSituationID()
-            
         }) {
             if let rt = sailPlanRuntime {
                 SailPlanSheet(runtime: rt)
@@ -248,9 +251,17 @@ struct LogActionView: View {
                 AutopilotModeSheet(runtime: rt)
             }
         }
+        .sheet(isPresented: $showSailingSheet, onDismiss: {
+            rederiveSituation()
+        }) {
+            if let rt = sailingRuntime {
+                SailingGeometrySheet(runtime: rt)
+            }
+        }
         .sheet(item: $textPromptRequest) { request in
             SingleLineTextPromptSheet(request: request)
         }
+
     }
     
     // MARK: - Title bar with situation picker
@@ -532,35 +543,56 @@ struct LogActionView: View {
      }*/
     
     private func runAction(_ variant: ActionVariant) {
-        // Special case: A28 "Modify canvas" opens the SailPlanSheet
-        if (variant.tag == "A28") || (variant.tag == "AF2S"){
-            let rt = ActionRuntime(context: actionContext, variant: variant)
+        let rt = ActionRuntime(context: actionContext, variant: variant)
+
+        // 1. Sail plan sheet (A28 / AF2S)
+        if (variant.tag == "A28") || (variant.tag == "AF2S") {
             sailPlanRuntime = rt
             showSailPlanSheet = true
+            return
+        }
+
+        // 2. Autopilot sheet (A26)
+        if variant.tag == "A26" {
+            autopilotRuntime = rt
+            showAutopilotSheet = true
+            return
+        }
+
+        // 3. Does this action also need the sailing geometry sheet?
+        let needsSailingSheetTags: Set<String> = [
+            "A27", // sails set
+            "A23", // change course
+            "A21", // deviation
+            "A20", // back on route
+            "A39", // tack
+            "A40", // gybe
+            "A43", // fall off
+            "A44"  // luff
+        ]
+
+        let needsSailingSheet = needsSailingSheetTags.contains(variant.tag)
+
+        // Special exception: A39 + close-hauled => just flip tack, no sheet
+        if variant.tag == "A39",
+           rt.instances.pointOfSail == .closeHauled {
+            variant.handler(rt)          // handler will flip tack + log
             rederiveSituation()
             return
         }
 
-        // Special case: A26 "Autopilot mode" opens the AP sheet
-        if variant.tag == "A26" {
-            let rt = ActionRuntime(context: actionContext, variant: variant)
-            autopilotRuntime = rt
-            showAutopilotSheet = true
-            // Situation may or may not change depending on how heavily AP factors in;
-            // safer to rederive after the sheet applies changes, via runtime.rederiveSituationIfNeeded()
-            return
-        }
+        // 4. Run the base handler (may be a no-op for some)
+        variant.handler(rt)
 
-        let rt = ActionRuntime(context: actionContext, variant: variant)
-
-        Task {
-            await variant.handler(rt)
-
-            await MainActor.run {
-                rederiveSituation()
-            }
+        // 5. Show sailing sheet if needed
+        if needsSailingSheet {
+            sailingRuntime = rt
+            showSailingSheet = true
+        } else {
+            rederiveSituation()
         }
     }
+
 
     private func rederiveSituation() {
         let newID = deriveSituationID(for: instances)

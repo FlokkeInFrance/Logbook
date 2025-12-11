@@ -429,6 +429,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var lastWPT : Location?
         var COG : Int = 0
         var bearingToNextWPT : Int = 0
+        var magHeading : Int = 0
         var SOG : Float = 0.0
         //Sail parameters
         var tack : Tack = Tack.none
