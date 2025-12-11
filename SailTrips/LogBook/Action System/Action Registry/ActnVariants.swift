@@ -119,7 +119,7 @@ enum LogActionCode: String, CaseIterable {
     case AF9 = "AF9"
     case AF10 = "AF10"
     case AF11 = "AF11"
-    case AF12 = "AF12"
+    //case AF12 = "AF12"
     case AF14 = "AF14"
     case AF15 = "AF15"
     case AF16 = "AF16"

@@ -82,6 +82,7 @@ struct HomePage: View {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
+                
                 NavigationLink("Cruise list", value: HomePageNavigation.cruise)
                     .frame(maxWidth: .infinity)
                     .padding(10)
@@ -102,7 +103,7 @@ struct HomePage: View {
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
-
+                
                 
                 if let instance = instances {
                     if instance.currentTrip != nil {
@@ -122,9 +123,18 @@ struct HomePage: View {
                     }
                 }
                 handleSelectedBoat()
+
                 if settings.count == 0 {
                     let newSettings = LogbookSettings(id: UUID())
                     modelContext.insert(newSettings)
+                }
+                if let instance = instances
+                {
+                    if instance.currentTrip != nil {
+                        if instance.currentTrip!.tripStatus == .completed {
+                            instance.currentTrip = nil
+                        }
+                    }
                 }
             }
             .onChange(of: selectedBoat) { oldboat, newBoat in

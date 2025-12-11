@@ -367,6 +367,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var tripType: TypeOfTrip=TypeOfTrip.roundTrip
         var boat: Boat?
         var dateOfStart: Date=Date()
+        var dateOfEnd: Date=Date()
         var tripStatus: TripStatus=TripStatus.preparing
         var cruise: Cruise?
         var crew: [CrewMember]=[]

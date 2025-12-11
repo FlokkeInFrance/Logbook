@@ -674,3 +674,48 @@ enum InventoryCategory: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 }
+
+// MARK: - Autopilot helpers
+
+extension Autopilot {
+
+    /// Human-readable name for display in the UI.
+    var displayName: String {
+        if self == .off {
+            return "Off"
+        }
+
+        // Try rawValue first if it exists, fall back to type name
+        let base: String
+        if let raw = (self as? any RawRepresentable)?.rawValue as? String {
+            base = raw
+        } else {
+            base = String(describing: self)
+        }
+
+        return base
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .capitalized
+    }
+
+    /// Whether this mode normally has a numeric target (heading, COG, etc.).
+    /// We assume every non-off mode can take a direction/target angle.
+    var needsDirection: Bool {
+        self != .off
+    }
+
+    /// Default active mode when engaging AP from "off".
+    /// We try to pick something that looks like "heading" first,
+    /// otherwise just use the first non-off case.
+    static var defaultEngagedMode: Autopilot {
+        if let headingLike = Autopilot.allCases.first(where: {
+            let name = String(describing: $0).lowercased()
+            return $0 != .off && (name.contains("hdg") || name.contains("heading"))
+        }) {
+            return headingLike
+        }
+
+        return Autopilot.allCases.first(where: { $0 != .off }) ?? .off
+    }
+}

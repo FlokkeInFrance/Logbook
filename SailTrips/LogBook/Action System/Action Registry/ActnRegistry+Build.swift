@@ -215,11 +215,39 @@ fileprivate func hasSeveralMotors(_ rt: ActionRuntime) -> Bool {
     return !hasOnlyOnePropulsionMotor(rt)
 }
 
+fileprivate func clearDangersAndEmergency(_ instances: Instances) {
+    instances.environmentDangers = [.none]
+    instances.trafficDescription = ""
+    
+    instances.emergencyState = false
+    instances.emergencyLevel = .none
+    instances.emergencyNature = .none
+    instances.emergencyStart = nil
+    instances.emergencyEnd = nil
+    instances.emergencyDescription = ""
+}
+
 
 extension ActionRegistry {
 
     static func makeDefault() -> ActionRegistry {
         var reg = ActionRegistry()
+        
+        func locationTypeDescription(_ instances: Instances) -> String {
+            switch instances.currentNavZone {
+            case .harbour:   return "harbour"
+            case .anchorage: return "anchorage"
+            case .buoyField: return "buoy field"
+            case .coastal:   return "coastal waters"
+            case .openSea:   return "open sea"
+            case .protectedWater: return "protected waters"
+            case .approach:  return "approach area"
+            case .traffic:   return "traffic lane"
+            case .intracoastalWaterway: return "intracoastal waterway"
+            case .none:      return "unknown location"
+            }
+        }
+
        
         // MARK: - Helpers for visibility
         
@@ -325,21 +353,13 @@ extension ActionRegistry {
                 instances.steering = .byHand
 
                 // Environment & emergency reset per your instance-var-mods
-                instances.environmentDangers = [.none]
-                instances.trafficDescription = ""
-
-                instances.emergencyState = false
-                instances.emergencyLevel = .none
-                instances.emergencyNature = .none
-                instances.emergencyStart = nil
-                instances.emergencyEnd = nil
-                instances.emergencyDescription = ""
+                clearDangersAndEmergency(instances)
 
                 ActionRegistry.logSimple("Trip started.", using: rt.context)
             }
 )
 
-
+        // MARK: - Trip lifecycle A1..A2
 
         reg.add(
             "A1R",
@@ -347,15 +367,39 @@ extension ActionRegistry {
             group: .navigation,
             systemImage: "stop.fill",
             isVisible: { rt in
-                // "only when trip is interrupted and boat stopped" :contentReference[oaicite:4]{index=4}
+                // only when trip is interrupted and boat stopped
                 isTripInterrupted(rt) && isBoatStopped(rt)
             },
             handler: { rt in
-                // TODO:
-                // - set trip.state = .completed
-                // - rt.instances.navStatus = .none
-                // - clear dangers and emergency
-                // - log "Trip completed, boat in [location type]"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                let instances = rt.instances
+
+                // Mark trip as completed
+                trip.tripStatus = .completed
+
+                // Boat is stopped
+                instances.navStatus = .stopped
+
+                // Clear dangers and emergency state
+                clearDangersAndEmergency(instances)
+
+                // Optionally set an arrival date
+                trip.dateOfEnd = Date()
+                // (spec didn't demand it, but it's often useful)
+                trip.dateOfStart = trip.dateOfStart       // unchanged
+                // If you want DateOfArrival in Cruise instead, wire that there.
+
+                // Location type for log
+                let locationType = locationTypeDescription(instances)
+
+                ActionRegistry.logSimple(
+                    "Trip completed, boat in \(locationType).",
+                    using: rt.context
+                )
             }
         )
 
@@ -366,10 +410,40 @@ extension ActionRegistry {
             systemImage: "xmark.circle",
             isVisible: { rt in isTripPreparing(rt) },
             handler: { rt in
-                // TODO:
-                // - ask reason R
-                // - mark trip aborted
-                // - log "Trip aborted because (R)"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                // Keep handler synchronous; do async UI work in a Task.
+                Task { @MainActor in
+                    // Ask for reason (one-line, optional)
+                    let rawReason = await rt.context.promptSingleLine(
+                        title: "Abort trip",
+                        message: "You may give a short reason (optional).",
+                        placeholder: "Reason (optional)",
+                        initialText: ""
+                    ) ?? ""
+
+                    let reason = rawReason.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let instances = rt.instances
+                    // Mark trip as completed / aborted
+                    trip.tripStatus = .completed
+                    trip.dateOfEnd = Date()
+                    // Boat is stopped
+                    instances.navStatus = .stopped
+                    // Clear dangers & emergency
+                    clearDangersAndEmergency(instances)
+                    // Log text
+                    let logText: String
+                    if reason.isEmpty {
+                        logText = "Trip aborted."
+                    } else {
+                        logText = "Trip aborted because \(reason)."
+                    }
+
+                    ActionRegistry.logSimple(logText, using: rt.context)
+                }
             }
         )
 
@@ -379,17 +453,50 @@ extension ActionRegistry {
             group: .otherLog,
             systemImage: "exclamationmark.triangle",
             isVisible: { rt in
-                // "only visible in menu, when trip not completed" :contentReference[oaicite:5]{index=5}
+                // only when trip not completed
                 isTripNotCompleted(rt)
             },
             handler: { rt in
-                // TODO:
-                // - set trip.state = .completed
-                // - rt.instances.navStatus = .none
-                // - ask reason R
-                // - log "The logbook is interrupted here because R"
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                Task { @MainActor in
+                    // Ask for a reason (one-line, optional)
+                    let rawReason = await rt.context.promptSingleLine(
+                        title: "Force stop logging",
+                        message: "You may give a short reason (optional).",
+                        placeholder: "Reason (optional)",
+                        initialText: ""
+                    ) ?? ""
+
+                    let reason = rawReason.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                    let instances = rt.instances
+
+                    // Mark trip as completed
+                    trip.tripStatus = .completed
+                    instances.navStatus = .stopped
+
+                    // Clear dangers & emergency
+                    clearDangersAndEmergency(instances)
+
+                    let logText: String
+                    if reason.isEmpty {
+                        logText = "The logbook is interrupted here."
+                    } else {
+                        logText = "The logbook is interrupted here because \(reason)."
+                    }
+
+                    ActionRegistry.logSimple(logText, using: rt.context)
+                }
             }
         )
+
+        // MARK: - Final log / landmark / steering in storm A49..A51
+
+ 
 
         // MARK: - Motor regime A3..A6
 
@@ -820,14 +927,31 @@ extension ActionRegistry {
             
             // MARK: - Autopilot A25 / A25R / A26
         
+        // MARK: - Autopilot A25 / A25R / A26
+
         reg.add(
             "A25",
             title: "Autopilot ON",
             group: .navigation,
             systemImage: "steeringwheel",
-            isVisible: {rt in isUnderway(rt) && rt.instances.steering != Steering.autopilot},
+            isVisible: { rt in
+                // When underway and NOT already on autopilot
+                isUnderway(rt) && rt.instances.steering != .autopilot
+            },
             handler: { rt in
-                // TODO: set autopilot state ON in instances
+                let instances = rt.instances
+
+                // Engage autopilot
+                instances.steering = .autopilot
+
+                // If mode is still off, pick a sensible default
+                if instances.autopilotMode == .off {
+                    instances.autopilotMode = Autopilot.defaultEngagedMode
+                }
+
+                // If there's no direction yet but this mode wants one, you can leave it at 0.
+                // The user can immediately refine with A26.
+                ActionRegistry.logSimple("Autopilot engaged.", using: rt.context)
             }
         )
 
@@ -836,9 +960,19 @@ extension ActionRegistry {
             title: "Autopilot OFF",
             group: .navigation,
             systemImage: "steeringwheel.slash",
-            isVisible: {rt in isUnderway(rt) && rt.instances.steering == Steering.autopilot},
+            isVisible: { rt in
+                // Only when autopilot is currently steering
+                isUnderway(rt) && rt.instances.steering == .autopilot
+            },
             handler: { rt in
-                // TODO: set autopilot state OFF
+                let instances = rt.instances
+
+                // Disengage autopilot and go back to manual steering
+                instances.steering = .byHand
+                instances.autopilotMode = .off
+                instances.autopilotDirection = 0
+
+                ActionRegistry.logSimple("Autopilot disengaged, manual steering.", using: rt.context)
             }
         )
 
@@ -846,11 +980,16 @@ extension ActionRegistry {
             "A26",
             title: "Autopilot mode",
             group: .navigation,
-            isVisible: {rt in isUnderway(rt) && rt.instances.steering == Steering.autopilot},
-            handler: { rt in
-                // TODO: show AP mode selection sheet, log change
+            isVisible: { rt in
+                // Only meaningful when autopilot is currently engaged
+                isUnderway(rt) && rt.instances.steering == .autopilot
+            },
+            handler: { _ in
+                // Real work is done via a sheet captured in LogActionView (like A28).
+                // Handler left intentionally empty.
             }
         )
+
 
         // MARK: - Sail plan A27–A32
 
@@ -1278,7 +1417,37 @@ extension ActionRegistry {
 
         // MARK: - Final log / landmark / steering in storm A49..A51
 
-        reg.add("A49", title: "Final log",   group: .otherLog, isVisible: {rt in rt.instances.navStatus == NavStatus.stopped})
+        reg.add(
+            "A49",
+            title: "Final log",
+            group: .otherLog,
+            isVisible: { rt in
+                rt.instances.navStatus == NavStatus.stopped
+            },
+            handler: { rt in
+                // A49 does NOT change trip or instances, it just writes a final line
+                // if the user entered something.
+                Task { @MainActor in
+                    let rawText = await rt.context.promptSingleLine(
+                        title: "Final log entry",
+                        message: "Add a concluding remark for this trip (optional).",
+                        placeholder: "Final remark",
+                        initialText: ""
+                    ) ?? ""
+
+                    let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    guard !text.isEmpty else {
+                        // If the user didn't write anything, discard the action.
+                        return
+                    }
+
+                    let logText = "Trip finished, to conclude: \(text)"
+                    ActionRegistry.logSimple(logText, using: rt.context)
+                }
+            }
+        )
+
+
         reg.add("A50", title: "Landmark",    group: .otherLog, isVisible: { rt in
             rt.instances.currentNavZone == NavZone.coastal })
         reg.add("A51", title: "Storm steering", group: .navigation, isVisible: {rt in stormyConditions(rt)})
@@ -1343,6 +1512,7 @@ extension ActionRegistry {
             title: "Danger spotted",
             group: .environment,
             systemImage: "exclamationmark.triangle",
+            isVisible: { rt in rt.instances.currentTrip?.tripStatus == .underway || rt.instances.currentTrip?.tripStatus == .interrupted },
             handler: { rt in
                 // TODO: open danger selector, add to dangers list
             }
@@ -1409,7 +1579,7 @@ extension ActionRegistry {
         reg.add(
             "AF2S",
             title: "\u{26F5}", // sailboat character for sail parameter
-            group: .environment,
+            group: .motors,
             handler: { rt in
                 // Present the sheet from LogActionView; usually via some state
                 //rt.showSailPlanSheet()
@@ -1504,6 +1674,7 @@ extension ActionRegistry {
             title: "Encounter",
             group: .environment,
             systemImage: "binoculars",
+            isVisible: { rt in rt.instances.currentTrip?.tripStatus == .underway || rt.instances.currentTrip?.tripStatus == .interrupted },
             handler: { rt in
                 // TODO: open encounter sheet; sheet makes log text
             }
@@ -1519,7 +1690,7 @@ extension ActionRegistry {
             }
         )
 
-        reg.add(
+        /*reg.add(
             "AF12",
             title: "Back to trip",
             group: .navigation,
@@ -1527,7 +1698,7 @@ extension ActionRegistry {
             handler: { rt in
                 // TODO: navigate UI back to trip page (no log)
             }
-        )
+        )*/
 
         reg.add(
             "AF14",

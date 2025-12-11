@@ -59,6 +59,13 @@ struct LogActionView: View {
     
     @State private var showSailPlanSheet = false
     @State private var sailPlanRuntime: ActionRuntime? = nil
+    @State private var autopilotRuntime: ActionRuntime? = nil
+    @State private var showAutopilotSheet = false
+    
+    // state for text prompt (one line of text)
+    @State private var textPromptRequest: ActionTextPromptRequest?
+
+
     
     
     // MARK: - Init
@@ -83,7 +90,8 @@ struct LogActionView: View {
     
     // MARK: - Derived context
     
-    private var actionContext: ActionContext {
+   /* private var actionContext: ActionContext { //old working action context before modifying for
+    //single line interaciton
         ActionContext(
             instances: instances,
             modelContext: modelContext,
@@ -103,7 +111,40 @@ struct LogActionView: View {
             },
             openDangerSheet: openDangerSheet
         )
+    }*/
+    
+    private var actionContext: ActionContext {
+        ActionContext(
+            instances: instances,
+            modelContext: modelContext,
+            showBanner: { message in
+                showBanner(message)
+                bannerText = message
+                withAnimation {
+                    showBannerView = true
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation {
+                        showBannerView = false
+                    }
+                }
+            },
+            openDangerSheet: openDangerSheet,
+              /*  { variant in
+                let rt = ActionRuntime(context: actionContext, variant: variant)
+                dangerRuntime = rt
+                showDangerSheet = true
+            },*/
+            presentTextPrompt: { request in
+                // move to the main actor because we're touching @State
+                Task { @MainActor in
+                    textPromptRequest = request
+                }
+            }
+            
+            )
     }
+
     
     /// Current situation definition (if any).
     private var currentDefinition: SituationDefinition? {
@@ -127,7 +168,7 @@ struct LogActionView: View {
         "AF9",  // Weather report
         "AF10", // Encounter
         "AF11", // Insert WPT
-        "AF12", // Back to trip page
+        //"AF12", // Back to trip page
         "AF14", // Change destination
         "AF15", // Log position
         "AF16", // Goto next WPT
@@ -196,14 +237,20 @@ struct LogActionView: View {
         .animation(.easeInOut(duration: 0.25), value: showBannerView)
         .sheet(isPresented: $showSailPlanSheet, onDismiss: {
             currentSituationID = instances.derivedSituationID()
+            
         }) {
             if let rt = sailPlanRuntime {
                 SailPlanSheet(runtime: rt)
             }
         }
-
-        
-        
+        .sheet(isPresented: $showAutopilotSheet) {
+            if let rt = autopilotRuntime {
+                AutopilotModeSheet(runtime: rt)
+            }
+        }
+        .sheet(item: $textPromptRequest) { request in
+            SingleLineTextPromptSheet(request: request)
+        }
     }
     
     // MARK: - Title bar with situation picker
@@ -486,26 +533,40 @@ struct LogActionView: View {
     
     private func runAction(_ variant: ActionVariant) {
         // Special case: A28 "Modify canvas" opens the SailPlanSheet
-        if ((variant.tag == "A28") || (variant.tag == "AF2S")) {
+        if (variant.tag == "A28") || (variant.tag == "AF2S"){
             let rt = ActionRuntime(context: actionContext, variant: variant)
             sailPlanRuntime = rt
             showSailPlanSheet = true
-            currentSituationID = instances.derivedSituationID()
+            rederiveSituation()
             return
         }
-        
+
+        // Special case: A26 "Autopilot mode" opens the AP sheet
+        if variant.tag == "A26" {
+            let rt = ActionRuntime(context: actionContext, variant: variant)
+            autopilotRuntime = rt
+            showAutopilotSheet = true
+            // Situation may or may not change depending on how heavily AP factors in;
+            // safer to rederive after the sheet applies changes, via runtime.rederiveSituationIfNeeded()
+            return
+        }
+
         let rt = ActionRuntime(context: actionContext, variant: variant)
-        
+
         Task {
             await variant.handler(rt)
-            
+
             await MainActor.run {
-                currentSituationID = instances.derivedSituationID()
+                rederiveSituation()
             }
         }
-        
-        
     }
+
+    private func rederiveSituation() {
+        let newID = deriveSituationID(for: instances)
+        currentSituationID = newID
+    }
+
 }
 
 
@@ -523,7 +584,7 @@ func deriveSituationID(for instances: Instances) -> SituationID {
     case .preparing:   return .s1PreparingTrip
     case .started:     return .s2TripStarted
     case .underway:    break          // handled below
-    case .interrupted: break          // treat like underway, but can refine later
+    case .interrupted: break       // treat like underway, but can refine later
     case .completed:   return .s1PreparingTrip // no active trip in practice
     }
 
@@ -557,7 +618,8 @@ func deriveSituationID(for instances: Instances) -> SituationID {
     if instances.currentNavZone == .harbour ||
        instances.currentNavZone == .anchorage ||
        instances.currentNavZone == .buoyField {
-        return .s3InHarbourArea
+        if instances.navStatus == .stopped {return .s7HarbourLikeS3}
+        else {return .s3InHarbourArea}
     }
 
     // 6. Approach => S6 / S6s
