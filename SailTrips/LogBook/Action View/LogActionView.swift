@@ -61,7 +61,7 @@ struct LogActionView: View {
     @State private var sailPlanRuntime: ActionRuntime? = nil
     @State private var autopilotRuntime: ActionRuntime? = nil
     @State private var showAutopilotSheet = false
-  
+
     @State private var showSailingSheet = false
     @State private var sailingRuntime: ActionRuntime? = nil
 
@@ -69,7 +69,7 @@ struct LogActionView: View {
     // state for text prompt (one line of text)
     @State private var textPromptRequest: ActionTextPromptRequest?
 
-
+    @State private var showNMEATestSheet = false
     
     
     // MARK: - Init
@@ -93,29 +93,6 @@ struct LogActionView: View {
     
     
     // MARK: - Derived context
-    
-   /* private var actionContext: ActionContext { //old working action context before modifying for
-    //single line interaciton
-        ActionContext(
-            instances: instances,
-            modelContext: modelContext,
-            showBanner: { message in
-                // Forward to caller *and* show local banner.
-                showBanner(message)
-                bannerText = message
-                withAnimation {
-                    showBannerView = true
-                }
-                // Auto-hide after a short delay.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    withAnimation {
-                        showBannerView = false
-                    }
-                }
-            },
-            openDangerSheet: openDangerSheet
-        )
-    }*/
     
     private var actionContext: ActionContext {
         ActionContext(
@@ -261,7 +238,9 @@ struct LogActionView: View {
         .sheet(item: $textPromptRequest) { request in
             SingleLineTextPromptSheet(request: request)
         }
-
+        .sheet(isPresented: $showNMEATestSheet) {
+            NMEATestSheet(boat: instances.selectedBoat)
+        }
     }
     
     // MARK: - Title bar with situation picker
@@ -529,20 +508,12 @@ struct LogActionView: View {
         }
     }
     
-    // MARK: - Run action
-    
-    /*private func runAction(_ variant: ActionVariant) {
-     let ctx = actionContext
-     let runtime = ActionRuntime(context: ctx, variant: variant)
-     
-     variant.handler(runtime)
-     
-     // If you already added the situation recompute earlier, keep it here:
-     let newID = deriveSituationID(from: ctx.instances)
-     currentSituationID = newID
-     }*/
-    
     private func runAction(_ variant: ActionVariant) {
+        
+        if variant.tag == "AF15" {
+            showNMEATestSheet = true
+            return
+        }
         let rt = ActionRuntime(context: actionContext, variant: variant)
 
         // 1. Sail plan sheet (A28 / AF2S)

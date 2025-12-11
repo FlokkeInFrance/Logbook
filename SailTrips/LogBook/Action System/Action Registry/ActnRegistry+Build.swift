@@ -1785,14 +1785,15 @@ extension ActionRegistry {
 
         reg.add(
             "AF15",
-            title: "Log position",
+            title: "Log position / NMEA test",
             group: .navigation,
             systemImage: "scope",
-            handler: { rt in
-                // TODO: make complete log entry at current position
-                // log "Current position is lat lon"
+            handler: { _ in
+                // Sheet-driven: the real UI is presented from LogActionView
+                // when AF15 is tapped. This handler intentionally left empty.
             }
         )
+
 
         reg.add(
             "AF16",
