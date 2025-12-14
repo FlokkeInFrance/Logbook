@@ -49,8 +49,11 @@ struct HomePage: View {
     @Query private var settings: [LogbookSettings]
     @Query(sort: \Trip.dateOfStart, order: .reverse) private var trips: [Trip]
     @Query(sort: \Cruise.DateOfStart, order: .forward) private var cruises: [Cruise]
+    
     @State private var showCruiseMatchAlert = false
-    @State private var detectedCruise: Cruise?
+    @State private var detectedCruiseID: UUID?
+    @State private var detectedCruiseTitle: String = ""
+
 
 
     private var defaultTripID: UUID? {
@@ -64,15 +67,106 @@ struct HomePage: View {
     }
     
     @ViewBuilder
-    private func require<T>(_ value: T?, _ message: String, content: (T) -> some View) -> some View {
+    private func require<T, V: View>(
+        _ value: T?,
+        _ message: String,
+        @ViewBuilder content: (T) -> V
+    ) -> some View {
         if let value {
             content(value)
         } else {
-            assertionFailure(message)
+            // Side effect, not part of the ViewBuilder result
+            let _ = assertionFailure(message)
             Text(message).foregroundStyle(.secondary)
         }
     }
 
+    @ViewBuilder
+    private func destination(_ homeNav: HomePageNavigation) -> some View {
+        switch homeNav {
+        case .beaufort: BeaufortEditor()
+        case .crew: CrewMembersView()
+        case .boatList: BoatListView(selectedBoat: $selectedBoat)
+
+        case .boatDetail:
+            require(selectedBoat, "No selected boat.") { boat in
+                BoatDetailsView(aBoat: boat)
+            }
+
+        case .tripCompanion:
+            require(instances, "No Instances row.") { inst in
+                TripCompanionView(instances: inst)
+            }
+
+        case .checklist:
+            require(selectedBoat, "No selected boat.") { boat in
+                ChecklistList(currentBoat: boat)
+            }
+
+        case .runChecklist:
+            require(instances, "No Instances row.") { inst in
+                ChecklistPickerView(instances: inst)
+            }
+
+        case .boatLog:
+            require(selectedBoat, "No selected boat.") { boat in
+                BoatLogListView(boat: boat)
+            }
+
+        case .maintenance:
+            require(selectedBoat, "No selected boat.") { boat in
+                MaintenanceView(boat: boat)
+            }
+
+        case .locations: LocationListView()
+
+        case .tripdetail, .triplist:
+            require(instances, "No Instances row.") { inst in
+                TripListView(instances: inst)
+            }
+
+        case .cruise:
+            require(instances, "No Instances row.") { inst in
+                CruiseListView(instances: inst)
+            }
+
+        case .logbookManEntry:
+            require(instances, "No Instances row.") { inst in
+                if let s = settings.first {
+                    LogbookEntryView(instances: inst, settings: s)
+                } else {
+                    Text("Missing settings row.")
+                }
+            }
+
+        case .parameters: SettingsView()
+        case .logView: LogbookViewer()
+        case .tripDetails: TripDetailHostView()
+
+        case .actionLog:
+            require(instances, "No Instances row.") { inst in
+                LogActionView(
+                    instances: inst,
+                    showBanner: { _ in },
+                    openDangerSheet: { _ in },
+                    onClose: { navPath.path.removeLast() }
+                )
+            }
+
+        default:
+            Text("Unhandled destination: \(String(describing: homeNav))")
+        }
+    }
+    
+    private struct CruiseAlertItem: Identifiable {
+        let id: UUID
+        let cruise: Cruise
+
+        init(_ cruise: Cruise) {
+            self.id = cruise.id
+            self.cruise = cruise
+        }
+    }
     
     var body: some View {
         /*Button("Memos"){
@@ -151,12 +245,14 @@ struct HomePage: View {
                         do {
                             let starter = TripStarter(context: modelContext)
                             let res = try starter.startTrip(instances: inst, cruises: cruises)
-                            detectedCruise = res.detectedCruise
-                            if res.detectedCruise != nil && inst.currentCruise == nil {
+                            if let match = res.detectedCruise, inst.currentCruise == nil {
+                                detectedCruiseID = match.id
+                                detectedCruiseTitle = match.Title
                                 showCruiseMatchAlert = true
                             } else {
                                 navPath.path.append(HomePageNavigation.tripCompanion)
                             }
+
                         } catch {
                             print(error)
                         }
@@ -184,16 +280,27 @@ struct HomePage: View {
             }
             .alert("Is trip part of Cruise?", isPresented: $showCruiseMatchAlert) {
                 Button("Yes") {
-                    guard let inst = instances, let cruise = detectedCruise else { return }
+                    guard
+                        let inst = instances,
+                        let id = detectedCruiseID,
+                        let cruise = cruises.first(where: { $0.id == id })
+                    else { return }
+
                     try? TripStarter(context: modelContext).setCurrentCruise(cruise, instances: inst)
-                    navPath.path.append(.tripCompanion)
+                    detectedCruiseID = nil
+                    detectedCruiseTitle = ""
+                    navPath.path.append(HomePageNavigation.tripCompanion)
                 }
+
                 Button("No", role: .cancel) {
-                    navPath.path.append(.tripCompanion)
+                    detectedCruiseID = nil
+                    detectedCruiseTitle = ""
+                    navPath.path.append(HomePageNavigation.tripCompanion)
                 }
             } message: {
-                Text("Start trip as part of cruise '\(detectedCruise?.Title ?? "")'?")
+                Text("Start trip as part of cruise '\(detectedCruiseTitle)'?")
             }
+            
             .onAppear {//ensuring that all necessary tables are assigned a value
                 let windC = BeaufortScale.validatedScales(from: winds)
                 for wind in windC {
@@ -282,57 +389,7 @@ struct HomePage: View {
                 MementoSheetView()
             }
             .navigationDestination(for: HomePageNavigation.self) { homeNav in
-                switch homeNav {
-                case .beaufort: BeaufortEditor()
-                case .crew: CrewMembersView()
-                case .boatList: BoatListView(selectedBoat: $selectedBoat)
-                case .boatDetail:
-                    require(selectedBoat, "No selected boat.") { boat in
-                        BoatDetailsView(aBoat: boat)
-                    }
-                case .tripCompanion:
-                    require(instances, "No Instances row.") { inst in
-                        TripCompanionView(instances: inst)
-                    }
-                case .checklist: ChecklistList(currentBoat: selectedBoat!)
-                case .runChecklist: ChecklistPickerView(instances: instances!)
-                case .boatLog: BoatLogListView(boat: selectedBoat!)
-                case .maintenance: MaintenanceView(boat: selectedBoat!)
-                case .locations: LocationListView()
-                case .tripdetail: TripListView(instances: instances!)
-                case .triplist: TripListView(instances: instances!)
-                case .cruise: CruiseListView(instances: instances!)
-                case .logbookManEntry: LogbookEntryView(instances: instances!, settings: settings[0])
-                case .parameters: SettingsView()
-                case .logView: LogbookViewer()
-                case .tripDetails: TripDetailHostView()
-
-
-
-                case .actionLog:
-                    if let instances = instances {
-                        LogActionView(
-                            instances: instances,
-                            showBanner: { _ in
-                                // For now, no external banner – LogActionView already shows its own local banner.
-                            },
-                            openDangerSheet: { _ in
-                                // Later: set some @State to present a danger sheet.
-                            },
-                            onClose: {
-                                // Pop ActionLog from NavigationStack
-                                navPath.path.removeLast()
-                            }
-                        )
-                    } else {
-                        Text("No active Instances / Boat selected.")
-                    }
-
-                    
-                default:
-                    Text("Unhandled destination: \(String(describing: homeNav))")
-
-                }
+                destination(homeNav)
             }
             
         }
