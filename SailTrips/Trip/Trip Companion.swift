@@ -20,6 +20,8 @@ struct TripCompanionView: View {
    }()
     
     @EnvironmentObject var navPath: PathManager
+    @EnvironmentObject var active: activations
+
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     
@@ -61,36 +63,26 @@ struct TripCompanionView: View {
         
         
         Button("View Current Logbook") {
+            active.selectedTripID = instances.currentTrip?.id
             navPath.path.append(HomePageNavigation.logView)
         }
-        /*if (thisTrip != nil){
-            if (thisTrip!.tripStatus != TripStatus.preparing && thisTrip!.tripStatus != TripStatus.completed){
-                Button("View Current Logbook"){
-                    if let trip = instances.currentTrip {
-                        navPath.path.append(HomePageNavigation.logView(trip))
-                    }
-                }
-                .font(.headline)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .overlay(RoundedRectangle(cornerRadius: 10).stroke())
-                
-            }
-        }*/
         
-        Button {
-            navPath.path.append(HomePageNavigation.actionLog)
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: "dot.viewfinder")
-                .font(.system(size: 32))
-                Text("Action Log")
-                .font(.headline)
+        
+            if (instances.currentTrip?.tripStatus != .completed){
+                Button {
+                navPath.path.append(HomePageNavigation.actionLog)
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "dot.viewfinder")
+                            .font(.system(size: 32))
+                        Text("Action Log")
+                            .font(.headline)
+                }
+                .frame(maxWidth: .infinity, minHeight: 100)
+                .padding()
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
-            .frame(maxWidth: .infinity, minHeight: 100)
-            .padding()
-            .background(.thinMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         
         ScrollView{
@@ -124,9 +116,10 @@ struct TripCompanionView: View {
                         }
                     }
                     HStack {
+                        Spacer()
                         Text("Status: \(instances.currentTrip?.tripStatus.rawValue ?? "-")")
                         Spacer()
-                        if Date.now.isSame(thisTrip?.dateOfStart ?? Date.now){
+                        /*if Date.now.isSame(thisTrip?.dateOfStart ?? Date.now){
                             Button("Go"){
                                 thisTrip!.tripStatus = .underway
                                 instances.odometerForTrip = 0
@@ -137,7 +130,7 @@ struct TripCompanionView: View {
                                 thisTrip!.tripStatus = .completed
                                 instances.currentTrip = nil
                             }
-                        }
+                        }*/
                     }
                 }
                 
@@ -228,6 +221,15 @@ struct TripCompanionView: View {
                             }
                         }
                     }
+
+                    Button("End Trip") {
+                        guard let trip = instances.currentTrip else { return }
+                        trip.tripStatus = .completed
+                        instances.currentTrip = nil
+                        try? modelContext.save()
+                        navPath.path.removeLast() // or dismiss()
+                    }
+
                 }
                 .sheet(isPresented: $showLocationSelector) {
                     LocationSelectorView(selectedLocations: Binding(
@@ -337,50 +339,8 @@ struct TripCompanionView: View {
             }
             .padding()
             .onAppear {
-                if (instances.currentTrip == nil) {
-                    let newTrip = Trip()
-                    newTrip.dateOfStart = Date.now
-                    newTrip.boat = instances.selectedBoat
-                    newTrip.tripStatus = TripStatus.preparing
-                    
-                    modelContext.insert(newTrip)
-                    instances.currentTrip = newTrip
-                    instances.dateOfStart = newTrip.dateOfStart
-                    if !(
-                            (instances.currentNavZone == .anchorage)
-                         || (instances.currentNavZone == .harbour)
-                         || (instances.currentNavZone == .buoyField)
-                         )
-                    {
-                        instances.currentNavZone = .harbour
-                    }
-                    if (instances.mooringUsed == .none || instances.mooringUsed == .other)
-                    {instances.mooringUsed = .mooredOnShore}
-                    instances.navStatus = .none
-                    instances.propulsion = .none
-                    instances.onCourse = true
-                    instances.tack = .none
-                    instances.pointOfSail = .stopped
-                    instances.daySail = true
-                    instances.presenceOfCn = false
-                    instances.severeWeather = .none
-                    instances.environmentDangers = [.none]
-                    instances.currentSpeed = 0
-                    instances.currentDirection = 0
-                    instances.emergencyState = false
-                    instances.emergencyStart = nil
-                    instances.emergencyEnd = nil
-                    instances.nextHT = nil
-                    instances.nextLT = nil
-                    instances.next2HT = nil
-                    instances.next2LT = nil
-                    
-                    if instances.currentLocation != nil {
-                        newTrip.startPlace = instances.currentLocation
-                    }
-                    thisTrip = newTrip
-                }
-                else {thisTrip = instances.currentTrip!}
+                if (instances.currentTrip != nil)
+                {thisTrip = instances.currentTrip!}
                 
                 // Clamp date
                 let start = instances.dateOfStart
@@ -410,6 +370,13 @@ struct TripCompanionView: View {
                 Button("No", role: .cancel) {}
             } message: {
                 Text("Start trip as part of cruise '\(detectedCruise?.Title ?? "")'?" )
+            }
+            .onChange(of: instances.currentTrip?.tripStatus) { _, newStatus in
+                if newStatus == .completed {
+                    instances.currentTrip = nil
+                    try? modelContext.save()
+                    dismiss()
+                }
             }
         }
         

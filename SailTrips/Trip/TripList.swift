@@ -26,6 +26,8 @@ struct TripListView: View {
     @State private var showCruiseMatchAlert = false
     @State private var potentialCruise: Cruise?
     @State private var newTrip: Trip?
+    @State private var selectedTrip: Trip?
+    @State private var showTripActions = false
 
     // Compute filtered trips for current boat and optional year
     private var filteredTrips: [Trip] {
@@ -104,8 +106,10 @@ struct TripListView: View {
                     Button("Story") { /* TODO */ }
                 }
                 .onTapGesture {
-                    newTrip = trip
+                    selectedTrip = trip
+                    showTripActions = true
                 }
+
             }
         }
         .alert(isPresented: $showCruiseMatchAlert) {
@@ -113,64 +117,62 @@ struct TripListView: View {
                 title: Text("Cruise Match Found"),
                 message: Text("Is this trip part of cruise '\(potentialCruise?.Title ?? "")'?"),
                 primaryButton: .default(Text("Yes"), action: confirmCruiseMatch),
-                secondaryButton: .cancel { finalizeTripCreation() }
+                secondaryButton: .cancel { beginTrip() }
             )
         }
+        .confirmationDialog(
+            "Trip",
+            isPresented: $showTripActions,
+            titleVisibility: .visible
+        ) {
+            Button("Show logs") {
+                if let id = selectedTrip?.id {
+                    navPath.path.append(HomePageNavigation.logView)
+                }
+            }
+            Button("Trip details") {
+                if let id = selectedTrip?.id {
+                    navPath.path.append(HomePageNavigation.tripDetails)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            if let t = selectedTrip {
+                Text(t.dateOfStart.formatted(date: .abbreviated, time: .omitted))
+            }
+        }
+
     }
 
     // MARK: - Trip creation logic
     private func beginTrip() {
-        let trip = Trip()
-        trip.boat = instances.selectedBoat
-        trip.dateOfStart = Date()
-        trip.tripStatus = .preparing
-        if let place = instances.currentLocation{
-        trip.startPlace = place}
+        do {
+            let starter = TripStarter(context: modelContext)
+            let res = try starter.startTrip(instances: instances, cruises: allCruises)
 
-        // Look for a matching cruise if none is current
-        if let currentCruise = instances.currentCruise {
-            potentialCruise = currentCruise
-            showCruiseMatchAlert = true
-            newTrip = trip
-        } else if let match = allCruises.first(where: {
-            $0.Boat?.id == instances.selectedBoat.id &&
-            $0.DateOfStart <= trip.dateOfStart &&
-            ($0.DateOfArrival ?? Date.distantFuture) >= trip.dateOfStart
-        }) {
-            potentialCruise = match
-            showCruiseMatchAlert = true
-            newTrip = trip
-        } else {
-            newTrip = trip
-            finalizeTripCreation()
+            potentialCruise = res.detectedCruise
+            newTrip = res.trip
+
+            if potentialCruise != nil {
+                showCruiseMatchAlert = true
+            } else {
+                navPath.path.append(HomePageNavigation.tripCompanion)
+            }
+        } catch {
+            print(error)
         }
     }
 
     private func confirmCruiseMatch() {
-        guard let trip = newTrip, let cruise = potentialCruise else { return }
-        // Assign cruise to trip & instances
-        trip.cruise = cruise
-        instances.currentCruise = cruise
-        // Copy crew
-        trip.crew = cruise.Crew
-        // Determine start/destination
-        if let start = trip.startPlace,
-           let idx = cruise.legs.firstIndex(where: { $0.id == start.id }),
-           idx + 1 < cruise.legs.count {
-            trip.destination = cruise.legs[idx + 1]
-        } else if cruise.legs.count >= 2 {
-            trip.startPlace = cruise.legs[0]
-            trip.destination = cruise.legs[1]
+        guard let cruise = potentialCruise else { return }
+        do {
+            try TripStarter(context: modelContext).setCurrentCruise(cruise, instances: instances)
+            // If you still want “copy crew + infer destination” for cruise legs, keep that here
+            navPath.path.append(HomePageNavigation.tripCompanion)
+        } catch {
+            print(error)
         }
-        finalizeTripCreation()
     }
 
-    private func finalizeTripCreation() {
-        guard let trip = newTrip else { return }
-        modelContext.insert(trip)
-        instances.currentTrip = trip
-        // Navigate to detail
-        navPath.path.append(HomePageNavigation.tripdetail)
-    }
 }
 

@@ -14,6 +14,12 @@
 import Foundation
 
 enum SailingLogStrings {
+    
+    private static func loc(_ key: String, fallback: String) -> String {
+        let value = NSLocalizedString(key, comment: "")
+        return value == key ? fallback : value
+    }
+
 
     // MARK: - Basic words
 
@@ -131,77 +137,38 @@ enum SailingLogStrings {
     static func prefix(for tag: String, underMotorOnly: Bool) -> String {
         switch (tag, underMotorOnly) {
 
-        // Sails set
         case ("A27", false):
-            return NSLocalizedString("log.prefix.A27.sail",
-                                     comment: "Prefix for 'sails set' under sail")
+            return loc("log.prefix.A27.sail", fallback: "Sail configuration:")
         case ("A27", true):
-            return NSLocalizedString("log.prefix.A27.motor",
-                                     comment: "Prefix for 'sails set' under motor")
+            return loc("log.prefix.A27.motor", fallback: "Course change under power:")
 
-        // Change course
-        case ("A23", false):
-            return NSLocalizedString("log.prefix.A23.sail",
-                                     comment: "Prefix for 'course changed' under sail")
-        case ("A23", true):
-            return NSLocalizedString("log.prefix.A23.motor",
-                                     comment: "Prefix for 'course changed' under motor")
-
-        // Deviation / back on route
-        case ("A21", false):
-            return NSLocalizedString("log.prefix.A21.sail",
-                                     comment: "Prefix for 'deviation from route' under sail")
-        case ("A21", true):
-            return NSLocalizedString("log.prefix.A21.motor",
-                                     comment: "Prefix for 'deviation from route' under motor")
-
-        case ("A20", false):
-            return NSLocalizedString("log.prefix.A20.sail",
-                                     comment: "Prefix for 'back on route' under sail")
-        case ("A20", true):
-            return NSLocalizedString("log.prefix.A20.motor",
-                                     comment: "Prefix for 'back on route' under motor")
-
-        // Tack / gybe / fall off / luff
         case ("A39", false):
-            return NSLocalizedString("log.prefix.A39.sail",
-                                     comment: "Prefix for 'tack' under sail")
+            return loc("log.prefix.A39.sail", fallback: "Tack:")
         case ("A39", true):
-            return NSLocalizedString("log.prefix.A39.motor",
-                                     comment: "Prefix for 'tack' under motor")
+            return loc("log.prefix.A39.motor", fallback: "Turn under power:")
 
         case ("A40", false):
-            return NSLocalizedString("log.prefix.A40.sail",
-                                     comment: "Prefix for 'gybe' under sail")
+            return loc("log.prefix.A40.sail", fallback: "Gybe:")
         case ("A40", true):
-            return NSLocalizedString("log.prefix.A40.motor",
-                                     comment: "Prefix for 'gybe' under motor")
+            return loc("log.prefix.A40.motor", fallback: "Turn under power:")
 
         case ("A43", false):
-            return NSLocalizedString("log.prefix.A43.sail",
-                                     comment: "Prefix for 'fall off' under sail")
+            return loc("log.prefix.A43.sail", fallback: "Fell off:")
         case ("A43", true):
-            return NSLocalizedString("log.prefix.A43.motor",
-                                     comment: "Prefix for 'fall off' under motor")
+            return loc("log.prefix.A43.motor", fallback: "Course change under power:")
 
         case ("A44", false):
-            return NSLocalizedString("log.prefix.A44.sail",
-                                     comment: "Prefix for 'luff' under sail")
+            return loc("log.prefix.A44.sail", fallback: "Luffed up:")
         case ("A44", true):
-            return NSLocalizedString("log.prefix.A44.motor",
-                                     comment: "Prefix for 'luff' under motor")
+            return loc("log.prefix.A44.motor", fallback: "Course change under power:")
 
-        // Default / fallback
         default:
-            if underMotorOnly {
-                return NSLocalizedString("log.prefix.default.motor",
-                                         comment: "Generic prefix for heading change under motor")
-            } else {
-                return NSLocalizedString("log.prefix.default.sail",
-                                         comment: "Generic prefix for sailing data update")
-            }
+            return underMotorOnly
+                ? loc("log.prefix.default.motor", fallback: "Under power:")
+                : loc("log.prefix.default.sail", fallback: "Sailing:")
         }
     }
+
 
     // MARK: - Default full messages
 

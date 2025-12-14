@@ -145,7 +145,7 @@ struct LogbookEntryView: View {
         instances.severeWeather = log.severeWeather
 
         // Tack conversion
-        instances.tack = log.starboardTack ? .starboard : .port
+        instances.tack = log.tack
 
         // Done
         try? context.save()
@@ -376,15 +376,12 @@ struct SailingSection: View {
                     }
                 }
             }
-            if settings.isLogFieldVisible(.starboardTack) {
-                Picker("Tack", selection: Binding(
-                    get: { log.starboardTack ? "Starboard" : "Port" },
-                    set: { log.starboardTack = ($0 == "Starboard") }
-                )) {
-                    Text("Starboard").tag("Starboard")
-                    Text("Port").tag("Port")
+            if settings.isLogFieldVisible(.tack) {
+                Picker("Tack", selection: $log.tack){
+                    ForEach(Tack.allCases) { tack in
+                        Text(tack.rawValue).tag(tack)
+                    }
                 }
-                .pickerStyle(.segmented)
             }
             if settings.isLogFieldVisible(.propulsion) {
                 Picker("Propulsion", selection: $log.propulsion) {

@@ -701,7 +701,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Checklists pout: %@"
+            "value" : "Checklists pour: %@"
           }
         }
       }
@@ -1431,10 +1431,10 @@
     "Intercostal waterway, under motor" : {
 
     },
-    "Intercostal waterway, under sail (≤4 Bft)" : {
+    "Intracoastal" : {
 
     },
-    "Intracoastal" : {
+    "Intracoastal waterway, under sail (≤4 Bft)" : {
 
     },
     "Intracoastal Waterway, under sail, strong wind" : {
@@ -1618,7 +1618,7 @@
     "Log modifications (%lld)" : {
 
     },
-    "Log position / NMEA test" : {
+    "Log position" : {
 
     },
     "Log text" : {
@@ -1667,70 +1667,264 @@
       "comment" : "Point of sail: stopped"
     },
     "log.prefix.A20.motor" : {
-      "comment" : "Prefix for 'back on route' under motor"
+      "comment" : "Prefix for 'back on route' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "back on route "
+          }
+        }
+      }
     },
     "log.prefix.A20.sail" : {
-      "comment" : "Prefix for 'back on route' under sail"
+      "comment" : "Prefix for 'back on route' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "back on route (sailing)"
+          }
+        }
+      }
     },
     "log.prefix.A21.motor" : {
-      "comment" : "Prefix for 'deviation from route' under motor"
+      "comment" : "Prefix for 'deviation from route' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "deviated from route "
+          }
+        }
+      }
     },
     "log.prefix.A21.sail" : {
-      "comment" : "Prefix for 'deviation from route' under sail"
+      "comment" : "Prefix for 'deviation from route' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "deviated from route (sailing)"
+          }
+        }
+      }
     },
     "log.prefix.A23.motor" : {
-      "comment" : "Prefix for 'course changed' under motor"
+      "comment" : "Prefix for 'course changed' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "course altered"
+          }
+        }
+      }
     },
     "log.prefix.A23.sail" : {
-      "comment" : "Prefix for 'course changed' under sail"
+      "comment" : "Prefix for 'course changed' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "course altered (sailing)"
+          }
+        }
+      }
     },
     "log.prefix.A27.motor" : {
-      "comment" : "Prefix for 'sails set' under motor"
+      "comment" : "Prefix for 'sails set' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sails set, motor running"
+          }
+        }
+      }
     },
     "log.prefix.A27.sail" : {
-      "comment" : "Prefix for 'sails set' under sail"
+      "comment" : "Prefix for 'sails set' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "all sails up"
+          }
+        }
+      }
     },
     "log.prefix.A39.motor" : {
-      "comment" : "Prefix for 'tack' under motor"
+      "comment" : "Prefix for 'tack' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tack (motor running)"
+          }
+        }
+      }
     },
     "log.prefix.A39.sail" : {
-      "comment" : "Prefix for 'tack' under sail"
+      "comment" : "Prefix for 'tack' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tacked"
+          }
+        }
+      }
     },
     "log.prefix.A40.motor" : {
-      "comment" : "Prefix for 'gybe' under motor"
+      "comment" : "Prefix for 'gybe' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "performed a gybe (motoring)"
+          }
+        }
+      }
     },
     "log.prefix.A40.sail" : {
-      "comment" : "Prefix for 'gybe' under sail"
+      "comment" : "Prefix for 'gybe' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "performed a gybe"
+          }
+        }
+      }
     },
     "log.prefix.A43.motor" : {
-      "comment" : "Prefix for 'fall off' under motor"
+      "comment" : "Prefix for 'fall off' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fell off (motor running)"
+          }
+        }
+      }
     },
     "log.prefix.A43.sail" : {
-      "comment" : "Prefix for 'fall off' under sail"
+      "comment" : "Prefix for 'fall off' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "fell off"
+          }
+        }
+      }
     },
     "log.prefix.A44.motor" : {
-      "comment" : "Prefix for 'luff' under motor"
+      "comment" : "Prefix for 'luff' under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "luffed (motor running)"
+          }
+        }
+      }
     },
     "log.prefix.A44.sail" : {
-      "comment" : "Prefix for 'luff' under sail"
+      "comment" : "Prefix for 'luff' under sail",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "luffed"
+          }
+        }
+      }
     },
     "log.prefix.default.motor" : {
-      "comment" : "Generic prefix for heading change under motor"
+      "comment" : "Generic prefix for heading change under motor",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "heading changed (motor running)"
+          }
+        }
+      }
     },
     "log.prefix.default.sail" : {
-      "comment" : "Generic prefix for sailing data update"
+      "comment" : "Generic prefix for sailing data update",
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sailing data "
+          }
+        }
+      }
     },
     "log.tack.change" : {
-      "comment" : "Phrase 'from <old> to <new>' for tack change"
+      "comment" : "Phrase 'from <old> to <new>' for tack change",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "tacked"
+          }
+        }
+      }
     },
     "log.tack.none" : {
-      "comment" : "No tack / unknown tack"
+      "comment" : "No tack / unknown tack",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "no tack"
+          }
+        }
+      }
     },
     "log.tack.on" : {
-      "comment" : "Phrase 'on <tack> tack'"
+      "comment" : "Phrase 'on <tack> tack'",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "same tack"
+          }
+        }
+      }
     },
     "log.tack.port" : {
-      "comment" : "Short word for port tack"
+      "comment" : "Short word for port tack",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "port tack"
+          }
+        }
+      }
     },
     "log.tack.starboard" : {
       "comment" : "Short word for starboard tack"
@@ -1943,10 +2137,6 @@
     "New Trip" : {
 
     },
-    "Newest first" : {
-      "comment" : "A help text for the button that toggles the sorting order of log entries.",
-      "isCommentAutoGenerated" : true
-    },
     "Next Waypoint" : {
 
     },
@@ -1997,6 +2187,10 @@
     "No tasks logged in the selected period for the given status." : {
 
     },
+    "No trip selected" : {
+      "comment" : "A message indicating that no trip has been selected.",
+      "isCommentAutoGenerated" : true
+    },
     "None" : {
 
     },
@@ -2027,10 +2221,6 @@
     "OK" : {
 
     },
-    "Oldest first" : {
-      "comment" : "A help text for the \"Oldest first\" button in the logbook viewer.",
-      "isCommentAutoGenerated" : true
-    },
     "On, Course Over Ground" : {
       "comment" : "Label for the \"On, Course Over Ground\" autopilot mode.",
       "isCommentAutoGenerated" : true
@@ -2053,10 +2243,6 @@
     },
     "On, Wind mode (True)" : {
       "comment" : "Label for the \"On, Wind mode (True)\" autopilot setting.",
-      "isCommentAutoGenerated" : true
-    },
-    "Once you start logging, entries will appear here." : {
-      "comment" : "A description text shown when there are no log entries.",
       "isCommentAutoGenerated" : true
     },
     "Ongoing" : {
@@ -2143,6 +2329,9 @@
     "Password" : {
       "comment" : "A label displayed next to the password field in the NMEA test connection section.",
       "isCommentAutoGenerated" : true
+    },
+    "Past Trips" : {
+
     },
     "Paste" : {
 
@@ -2431,7 +2620,14 @@
 
     },
     "sails set" : {
-
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "sails set"
+          }
+        }
+      }
     },
     "SAR in area" : {
 
@@ -2491,19 +2687,25 @@
       "localizations" : {
         "de" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Auswählen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select an Item"
           }
         },
         "fr" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Choisir"
           }
         },
         "nl" : {
           "stringUnit" : {
-            "state" : "translated",
+            "state" : "needs_review",
             "value" : "Selecteer"
           }
         }
@@ -2569,6 +2771,10 @@
     "Show List Of Cruises" : {
 
     },
+    "Show logs" : {
+      "comment" : "A menu item that shows the logs of a selected trip.",
+      "isCommentAutoGenerated" : true
+    },
     "Show on Map" : {
 
     },
@@ -2619,9 +2825,6 @@
     "Standard equipment" : {
       "comment" : "A section header in the rig modify view, describing standard equipment.",
       "isCommentAutoGenerated" : true
-    },
-    "Starboard" : {
-
     },
     "Start date:" : {
 
@@ -2789,11 +2992,19 @@
     "Trip" : {
 
     },
+    "Trip details" : {
+      "comment" : "A button that takes you to the details of a trip.",
+      "isCommentAutoGenerated" : true
+    },
     "Trip Details" : {
 
     },
     "Trip is ongoing – returning to live view." : {
 
+    },
+    "Trip not found" : {
+      "comment" : "A message indicating that a trip was not found.",
+      "isCommentAutoGenerated" : true
     },
     "Trip Ongoing" : {
 
@@ -2820,6 +3031,9 @@
 
     },
     "Undo" : {
+
+    },
+    "Unhandled destination: %@" : {
 
     },
     "Units" : {

@@ -27,7 +27,8 @@ enum HomePageNavigation: Hashable {
     case cruise
     case logbookManEntry
     case parameters
-    case logView
+    case logView  // nil = all logs, non-nil = logs for that trip
+    case tripDetails
     case actionLog
 }
 
@@ -46,10 +47,32 @@ struct HomePage: View {
     @State private var showMementoSheet = false
     @Query var winds: [BeaufortScale]
     @Query private var settings: [LogbookSettings]
+    @Query(sort: \Trip.dateOfStart, order: .reverse) private var trips: [Trip]
+    @Query(sort: \Cruise.DateOfStart, order: .forward) private var cruises: [Cruise]
+    @State private var showCruiseMatchAlert = false
+    @State private var detectedCruise: Cruise?
+
+
+    private var defaultTripID: UUID? {
+        if let current = instances?.currentTrip?.id { return current }
+        guard let boatID = instances?.selectedBoat.id else { return nil }
+        return trips.first(where: { $0.boat?.id == boatID && $0.tripStatus == .completed })?.id
+    }
     
     init() {
         _fetchDescriptor = State(initialValue: FetchDescriptor<Boat>(sortBy: [SortDescriptor(\Boat.name)]))
     }
+    
+    @ViewBuilder
+    private func require<T>(_ value: T?, _ message: String, content: (T) -> some View) -> some View {
+        if let value {
+            content(value)
+        } else {
+            assertionFailure(message)
+            Text(message).foregroundStyle(.secondary)
+        }
+    }
+
     
     var body: some View {
         /*Button("Memos"){
@@ -60,7 +83,7 @@ struct HomePage: View {
         NavigationStack(path: $navPath.path) {
             VStack(spacing: 20) {
                 //Headers
-                Text("Current Boat is \(selectedBoat? .name ?? "None")")
+                Text("Current Boat is \(selectedBoat?.name ?? "None")")
                     .font(.headline)
                 Text("Select an Option")
                     .font(.subheadline)
@@ -68,9 +91,21 @@ struct HomePage: View {
                     .padding()
                 
                 // Links
+                
+                if let inst = instances, inst.currentTrip != nil {
+                    NavigationLink(value: HomePageNavigation.tripCompanion) {
+                        Text("Return to ongoing trip")
+                            .frame(maxWidth: .infinity)
+                            .padding(10)
+                            .background(Color.yellow)
+                            .foregroundColor(.black)
+                            .cornerRadius(10)
+                    }
+                }
+                
                 NavigationLink("Crew Members", value: HomePageNavigation.crew)
                     .frame(maxWidth: .infinity)
-                    .padding()
+                    .padding(10)
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
@@ -97,22 +132,67 @@ struct HomePage: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 
-                NavigationLink("Boat Logbook", value: HomePageNavigation.logView)
+                NavigationLink("Boat Logbook", value: HomePageNavigation.boatLog)
                     .frame(maxWidth: .infinity)
                     .padding(10)
                     .background(Color.blue)
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 
+                NavigationLink("Past Trips", value: HomePageNavigation.triplist)
+                    .frame(maxWidth: .infinity)
+                    .padding(10)
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
                 
-                if let instance = instances {
+                if let inst = instances, inst.currentTrip == nil {
+                    Button {
+                        do {
+                            let starter = TripStarter(context: modelContext)
+                            let res = try starter.startTrip(instances: inst, cruises: cruises)
+                            detectedCruise = res.detectedCruise
+                            if res.detectedCruise != nil && inst.currentCruise == nil {
+                                showCruiseMatchAlert = true
+                            } else {
+                                navPath.path.append(HomePageNavigation.tripCompanion)
+                            }
+                        } catch {
+                            print(error)
+                        }
+                    } label: {
+                        Text("Start a new trip")
+                            .frame(maxWidth: .infinity)
+                            .padding(10)
+                            .background(Color.green)
+                            .foregroundColor(.white)
+                            .cornerRadius(10)
+                    }
+                }
+                
+
+                
+                
+               /* if let instance = instances {
                     if instance.currentTrip != nil {
                         NavigationLink("Go back to current Trip",value: HomePageNavigation.tripCompanion)
                     }
                     else {
                         NavigationLink("Start new Trip", value: HomePageNavigation.tripCompanion)
                     }
+                }*/
+            }
+            .alert("Is trip part of Cruise?", isPresented: $showCruiseMatchAlert) {
+                Button("Yes") {
+                    guard let inst = instances, let cruise = detectedCruise else { return }
+                    try? TripStarter(context: modelContext).setCurrentCruise(cruise, instances: inst)
+                    navPath.path.append(.tripCompanion)
                 }
+                Button("No", role: .cancel) {
+                    navPath.path.append(.tripCompanion)
+                }
+            } message: {
+                Text("Start trip as part of cruise '\(detectedCruise?.Title ?? "")'?")
             }
             .onAppear {//ensuring that all necessary tables are assigned a value
                 let windC = BeaufortScale.validatedScales(from: winds)
@@ -206,7 +286,14 @@ struct HomePage: View {
                 case .beaufort: BeaufortEditor()
                 case .crew: CrewMembersView()
                 case .boatList: BoatListView(selectedBoat: $selectedBoat)
-                case .boatDetail: BoatDetailsView(aBoat: selectedBoat!)
+                case .boatDetail:
+                    require(selectedBoat, "No selected boat.") { boat in
+                        BoatDetailsView(aBoat: boat)
+                    }
+                case .tripCompanion:
+                    require(instances, "No Instances row.") { inst in
+                        TripCompanionView(instances: inst)
+                    }
                 case .checklist: ChecklistList(currentBoat: selectedBoat!)
                 case .runChecklist: ChecklistPickerView(instances: instances!)
                 case .boatLog: BoatLogListView(boat: selectedBoat!)
@@ -216,10 +303,12 @@ struct HomePage: View {
                 case .triplist: TripListView(instances: instances!)
                 case .cruise: CruiseListView(instances: instances!)
                 case .logbookManEntry: LogbookEntryView(instances: instances!, settings: settings[0])
-                case .tripCompanion: TripCompanionView(instances: instances!)
                 case .parameters: SettingsView()
-                case .logView:
-                    LogbookViewer()
+                case .logView: LogbookViewer()
+                case .tripDetails: TripDetailHostView()
+
+
+
                 case .actionLog:
                     if let instances = instances {
                         LogActionView(
@@ -240,7 +329,9 @@ struct HomePage: View {
                     }
 
                     
-                default : fatalError("Unhandled Navigation Destination")
+                default:
+                    Text("Unhandled destination: \(String(describing: homeNav))")
+
                 }
             }
             

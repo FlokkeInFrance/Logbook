@@ -50,8 +50,10 @@ struct ChecklistEditor: View {
                 newSectionName = "Main Section"
                 addSection()
                 newSectionName  = ""
+                header.completed = false
             }
             header.sections.sort(by: { $0.orderNum < $1.orderNum })
+            header.completed = false
         }
 
         .toolbar {

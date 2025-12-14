@@ -496,8 +496,6 @@ extension ActionRegistry {
 
         // MARK: - Final log / landmark / steering in storm A49..A51
 
- 
-
         // MARK: - Motor regime A3..A6
 
         reg.add( // Done
@@ -676,8 +674,6 @@ extension ActionRegistry {
             }
         )
 
-
-
         reg.add(
             "A8A",
             title: "Drop anchor",
@@ -793,34 +789,33 @@ extension ActionRegistry {
 
         // MARK: - Zones A12..A15
 
-        reg.add("A12", title: "Protected water", group: .navigation,
-                isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .protectedWater },
-                handler: { rt in
-                    rt.instances.currentNavZone = .protectedWater
-                    ActionRegistry.logSimple("Changed zone: now in protected waters.", using: rt.context)
-                })
-
-        reg.add("A13", title: "Coastal zone",    group: .navigation,
+        reg.add("A12", title: "Coastal zone",    group: .navigation,
                 isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .coastal },
                 handler: { rt in
                     rt.instances.currentNavZone = .coastal
                     ActionRegistry.logSimple("Changed zone: now in coastal waters.", using: rt.context)
                 })
 
-        reg.add("A14", title: "Open sea",        group: .navigation,
+        reg.add("A13", title: "Open sea",        group: .navigation,
                 isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .openSea },
                 handler: { rt in
                     rt.instances.currentNavZone = .openSea
                     ActionRegistry.logSimple("Changed zone: now in open sea.", using: rt.context)
                 })
 
-        reg.add("A15", title: "Intracoastal",    group: .navigation,
+        reg.add("A14", title: "Intracoastal",    group: .navigation,
                 isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .intracoastalWaterway },
                 handler: { rt in
                     rt.instances.currentNavZone = .intracoastalWaterway
                     ActionRegistry.logSimple("Changed zone: now in intracoastal waterway.", using: rt.context)
                 })
 
+        reg.add("A15", title: "Protected water", group: .navigation,
+                isVisible: { rt in isUnderway(rt) && rt.instances.currentNavZone != .protectedWater },
+                handler: { rt in
+                    rt.instances.currentNavZone = .protectedWater
+                    ActionRegistry.logSimple("Changed zone: now in protected waters.", using: rt.context)
+                })
 
         // MARK: - Approach / deviating / clear dangers A16..A21
 
@@ -851,6 +846,8 @@ extension ActionRegistry {
                 rt.instances.navStatus = .heaveto
                 rt.instances.currentSpeed = 0
                 rt.instances.onCourse = false
+                rt.instances.currentTrip?.tripStatus = .interrupted
+                rt.instances.steering = .fixed
                 ActionRegistry.logSimple("Boat hove to.", using: rt.context)
             }
         )
@@ -865,8 +862,9 @@ extension ActionRegistry {
             handler: { rt in
                 rt.instances.navStatus = .barepoles
                 rt.instances.propulsion = .none
-                rt.instances.currentSpeed = 0
                 rt.instances.onCourse = false
+                rt.instances.currentTrip?.tripStatus = .interrupted
+                rt.instances.steering = .fixed
                 ActionRegistry.logSimple("Boat under bare poles.", using: rt.context)
             }
         )
@@ -893,7 +891,9 @@ extension ActionRegistry {
             },
             handler: { rt in
                 rt.instances.onCourse = true
-                ActionRegistry.logSimple("Back on planned track.", using: rt.context)
+                rt.instances.navStatus = .underway
+                rt.instances.currentTrip?.tripStatus = .underway
+                //ActionRegistry.logSimple("Back on planned track.", using: rt.context)
             }
         )
 
@@ -904,7 +904,7 @@ extension ActionRegistry {
             isVisible: { rt in isUnderway(rt) },
             handler: { rt in
                 rt.instances.onCourse = false
-                ActionRegistry.logSimple("Route deviation required.", using: rt.context)
+                //ActionRegistry.logSimple("Route deviation required.", using: rt.context)
             }
         )
 
@@ -926,7 +926,7 @@ extension ActionRegistry {
             group: .navigation,
             isVisible: { rt in isUnderway(rt) },
             handler: { rt in
-                ActionRegistry.logSimple("Course change ordered.", using: rt.context)
+                //ActionRegistry.logSimple("Course change ordered.", using: rt.context)
             }
         )
 
@@ -1453,7 +1453,7 @@ extension ActionRegistry {
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
                 // High-level log; SailingGeometrySheet will add detailed one.
-                ActionRegistry.logSimple("Preparing to gybe.", using: rt.context)
+                //ActionRegistry.logSimple("Preparing to gybe.", using: rt.context)
             }
         )
 
@@ -1463,7 +1463,7 @@ extension ActionRegistry {
             group: .environment,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
-                ActionRegistry.logSimple("Falling off from the wind.", using: rt.context)
+                //ActionRegistry.logSimple("Falling off from the wind.", using: rt.context)
             }
         )
 
@@ -1473,17 +1473,79 @@ extension ActionRegistry {
             group: .environment,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
-                ActionRegistry.logSimple("Luffing up towards the wind.", using: rt.context)
+                //ActionRegistry.logSimple("Luffing up towards the wind.", using: rt.context)
             }
         )
 
-        reg.add("A41", title: "Flatten sails",group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
-        reg.add("A42", title: "Curve sails",  group: .environment, isVisible: {rt in propulsionIsSailOrMotorsail(rt)})
+        reg.add(
+            "A41",
+            title: "Flatten sails",
+            group: .environment,
+            isVisible: {rt in propulsionIsSailOrMotorsail(rt)},
+            handler: {rt in
+                ActionRegistry.logSimple("Sails flattened", using: rt.context)
+            }
+        
+        )
+                
+        reg.add(
+            "A42",
+            title: "Curve sails",
+            group: .environment,
+            isVisible: {rt in propulsionIsSailOrMotorsail(rt)},
+            handler: {rt in
+                ActionRegistry.logSimple("Sails curved", using: rt.context)
+            }
+        )
 
-        reg.add("A45", title: "Run off",      group: .environment, isVisible: {rt in stormyConditions(rt)})
-        reg.add("A46", title: "Forereach",    group: .environment, isVisible: {rt in stormyConditions(rt)})
-        reg.add("A47", title: "Drogue",       group: .environment, isVisible: {rt in stormyConditions(rt)})
-        reg.add("A48", title: "Sea anchor",   group: .environment, isVisible: {rt in stormyConditions(rt)})
+        reg.add(
+            "A45",
+            title: "Run off",
+            group: .environment,
+            isVisible: {rt in stormyConditions(rt)},
+            handler: {rt in
+                rt.instances.navStatus = .stormTactics
+                rt.instances.onCourse = false
+                rt.instances.currentTrip?.tripStatus = .interrupted
+                    ActionRegistry.logSimple("Trying to handle storm conditions by Running off, not on track anymore", using: rt.context)
+            }
+        )
+        reg.add(
+            "A46",
+            title: "Forereach",
+            group: .environment,
+            isVisible: {rt in stormyConditions(rt)},
+            handler: {rt in
+                rt.instances.navStatus = .stormTactics
+                rt.instances.onCourse = false
+                rt.instances.currentTrip?.tripStatus = .interrupted
+                ActionRegistry.logSimple("Trying to handle storm conditions by Forereaching, not on track anymore", using: rt.context)
+            }
+        )
+        reg.add(
+            "A47",
+            title: "Drogue",
+            group: .environment,
+            isVisible: {rt in stormyConditions(rt)},
+            handler: {rt in
+                rt.instances.navStatus = .stormTactics
+                rt.instances.onCourse = false
+                rt.instances.currentTrip?.tripStatus = .interrupted
+                ActionRegistry.logSimple("Conditions required to deploy a drogue, not on track anymore", using: rt.context)
+            }
+        )
+        reg.add(
+            "A48",
+            title: "Sea anchor",
+            group: .environment,
+            isVisible: {rt in stormyConditions(rt)},
+            handler: {rt in
+                rt.instances.navStatus = .stormTactics
+                rt.instances.onCourse = false
+                rt.instances.currentTrip?.tripStatus = .interrupted
+                ActionRegistry.logSimple("Conditions required to deploy a sea anchor, not on track anymore", using: rt.context)
+            }
+        )
 
         // TODO: use AWA, point of sail, storm danger flag
 
@@ -1664,8 +1726,7 @@ extension ActionRegistry {
             group: .environment,
             systemImage: "moon.stars",
             handler: { rt in
-                // TODO: instances.daySail = false
-                // log "Navigating in night conditions"
+                rt.instances.daySail = false
             }
         )
 
@@ -1675,8 +1736,7 @@ extension ActionRegistry {
             group: .environment,
             systemImage: "sun.max",
             handler: { rt in
-                // TODO: instances.daySail = true
-                // log "Navigating in daylight"
+                rt.instances.daySail = true
             }
         )
 
@@ -1782,10 +1842,23 @@ extension ActionRegistry {
                 // log "New destination chosen: name, type"
             }
         )
+        
+        // ActnRegistry+Build.swift
 
         reg.add(
             "AF15",
-            title: "Log position / NMEA test",
+            title: "Log position",
+            group: .navigation,
+            systemImage: "scope",
+            handler: { rt in
+                ActionRegistry.logSimple("Position report", using: rt.context)
+            }
+        )
+
+
+        reg.add(
+            "AF15x",
+            title: "NMEA test",
             group: .navigation,
             systemImage: "scope",
             handler: { _ in

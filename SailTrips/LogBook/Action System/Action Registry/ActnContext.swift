@@ -6,40 +6,66 @@
 //
 
 // ActionContext.swift (or inside ActionVariants.swift)
-import SwiftData
-import Foundation
+// ActionContext.swift
 
-/// Runtime context passed to every action when it is executed.
-/*struct ActionContext { // old working version before text prompt
-    var instances: Instances
-    var modelContext: ModelContext
-    var showBanner: (String) -> Void
-    var openDangerSheet: (ActionVariant) -> Void
-}*/
+// ActnContext.swift
+
+import Foundation
+import SwiftData
+
+struct PositionFix: Sendable {
+    enum Source: Sendable { case phone, nmea, continuousStream, unknown }
+    var lat: Double
+    var lon: Double
+    var timestamp: Date
+    var source: Source
+}
+
+struct NavSensorsSnapshot: Sendable {
+    var sog: Float?
+    var cog: Int?
+    var stw: Float?
+    var awa: Int?
+    var aws: Int?
+    var twd: Int?
+    var tws: Int?
+    var magHeading: Int?
+    // (extend later when you wire more PGNs/sentences)
+}
+
+// ActnContext.swift
 
 struct ActionContext {
     let instances: Instances
     let modelContext: ModelContext
     let showBanner: (String) -> Void
     let openDangerSheet: (ActionVariant) -> Void
-
-    // NEW: hook into UI to show a one-line text prompt
     let presentTextPrompt: (ActionTextPromptRequest) -> Void
+
+    let positionUpdater: PositionUpdater?
+
+    /// NEW: last known NMEA snapshot
+    let nmeaSnapshot: () -> NMEASnapshot?
 
     init(
         instances: Instances,
         modelContext: ModelContext,
         showBanner: @escaping (String) -> Void,
         openDangerSheet: @escaping (ActionVariant) -> Void,
-        presentTextPrompt: @escaping (ActionTextPromptRequest) -> Void = { _ in }
+        presentTextPrompt: @escaping (ActionTextPromptRequest) -> Void = { _ in },
+        positionUpdater: PositionUpdater? = nil,
+        nmeaSnapshot: @escaping () -> NMEASnapshot? = { nil }
     ) {
         self.instances = instances
         self.modelContext = modelContext
         self.showBanner = showBanner
         self.openDangerSheet = openDangerSheet
         self.presentTextPrompt = presentTextPrompt
+        self.positionUpdater = positionUpdater
+        self.nmeaSnapshot = nmeaSnapshot
     }
 }
+
 
 extension ActionContext {
     /// Shows a generic single-line text prompt and returns the result.

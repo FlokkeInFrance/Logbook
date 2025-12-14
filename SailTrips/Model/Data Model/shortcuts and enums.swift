@@ -339,7 +339,12 @@ enum MooringType: String, Codable, CaseIterable, Identifiable {
     case mooringBall = "mooring_ball"
     case chainMooring = "chain_mooring"
     case mooredOnBuoy = "moored_on_buoy"
-    case mooredOnShore = "moored_to_shore" // FIX: clearer wording
+    case mooredOnShore = "moored_on_shore" // FIX: clearer wording
+    case medMoore = "Mediteraneen Mooring"
+    case anchorMoore = "Anchor and Mooring"
+    case mooredOnDock = "moored_on_floating dock"
+    case mooredBowAndStern = "moored with bowline"
+    case bowAndStern = "stopped with bowline and sternline"
     case atAnchor = "at_anchor"
     case double = "double_moored"
     case other = "other"

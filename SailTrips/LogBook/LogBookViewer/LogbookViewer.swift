@@ -9,127 +9,96 @@
 import SwiftUI
 import SwiftData
 
-/// Master–detail logbook viewer.
-/// If you pass a Trip, only logs for that trip are shown.
-/// If you pass nil, all logs are displayed.
+/// iPhone-first Logbook viewer (no split view).
+/// Uses global selection: `active.selectedTripID`
+/// - nil => show all logs
+/// - UUID => only logs whose `trip?.id` matches
 struct LogbookViewer: View {
-    @Environment(\.modelContext) private var modelContext
+    @EnvironmentObject private var active: activations
 
-    /// Optional trip filter
-    let trip: Trip?
+    @Query(sort: [SortDescriptor(\Logs.dateOfLog, order: .reverse)])
+    private var logs: [Logs]
 
-    /// Logs for the given trip (or all logs if trip == nil)
-    @Query private var logs: [Logs]
-
-    /// Logbook settings (field visibility, units, etc.)
     @Query private var settingsArray: [LogbookSettings]
 
-    @State private var selectedLog: Logs?
-    @State private var ascending: Bool = false
+    @State private var ascending = false
+    @State private var searchText = ""
 
-    @Environment(\.horizontalSizeClass) private var hSizeClass
+    private var logbookSettings: LogbookSettings? { settingsArray.first }
 
-    // MARK: - Init with dynamic @Query
-
-    init(trip: Trip? = nil) {
-        self.trip = trip
-
-        if let trip {
-            let tripID = trip.id   // capture a simple value
-
-            _logs = Query(
-                filter: #Predicate<Logs> { log in
-                    log.trip.id == tripID
-                },
-                sort: [SortDescriptor(\Logs.dateOfLog, order: .reverse)]
-            )
-        } else {
-            _logs = Query(
-                sort: [SortDescriptor(\Logs.dateOfLog, order: .reverse)]
-            )
+    private var visibleLogs: [Logs] {
+        // 1) Filter by trip (optional-safe)
+        var base = logs.filter { log in
+            guard let filterID = active.selectedTripID else { return true }
+            return log.trip.id == filterID
         }
-    }
 
+        // 2) Optional search (cheap)
+        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let q = searchText.lowercased()
+            base = base.filter { log in
+                log.logEntry.lowercased().contains(q)
+                || log.nextWaypoint.lowercased().contains(q)
+            }
+        }
 
-    // MARK: - Derived
-
-    private var sortedLogs: [Logs] {
+        // 3) Optional order toggle
         if ascending {
-            return logs.sorted { $0.dateOfLog < $1.dateOfLog }
-        } else {
-            return logs.sorted { $0.dateOfLog > $1.dateOfLog }
+            base.reverse() // since query is already .reverse by date
         }
+        return base
     }
-
-    private var logbookSettings: LogbookSettings? {
-        settingsArray.first   // may be nil -> default to everything visible
-    }
-
-    // MARK: - Body
 
     var body: some View {
-        NavigationSplitView {
-            VStack(spacing: 0) {
-                // Header + sort toggle
-                HStack {
-                    Text(tripTitle)
-                        .font(.headline)
-                    Spacer()
-                    Button {
-                        ascending.toggle()
-                    } label: {
-                        Image(systemName: ascending ? "arrow.up" : "arrow.down")
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .padding(.trailing, 4)
-                    .help(ascending ? "Oldest first" : "Newest first")
-                }
-                .padding([.horizontal, .top])
-
-                // List of log rows
-                List(sortedLogs, selection: $selectedLog) { log in
-                    LogRowView(
-                        log: log,
-                        isCompact: hSizeClass == .compact
-                    )
+        List(visibleLogs) { log in
+            NavigationLink {
+                LogDetailView(log: log, settings: logbookSettings)
+            } label: {
+                LogRowView(log: log)
+            }
+        }
+        .navigationTitle(title)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic))
+        .toolbar {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { ascending.toggle() } label: {
+                    Image(systemName: ascending ? "arrow.up" : "arrow.down")
                 }
             }
-        } detail: {
-            if let log = selectedLog ?? sortedLogs.first {
-                LogDetailView(
-                    log: log,
-                    settings: logbookSettings
-                )
-            } else {
+        }
+        .overlay {
+            if visibleLogs.isEmpty {
                 ContentUnavailableView(
                     "No log entries",
                     systemImage: "note.text",
-                    description: Text("Once you start logging, entries will appear here.")
+                    description: Text(emptyMessage)
                 )
             }
         }
     }
 
-    private var tripTitle: String {
-        if let trip {
-            // You can customize this if Trip has a nicer label
-            return "Logbook – \(trip.dateOfStart.formatted(date: .abbreviated, time: .omitted))"
+
+    private var title: String {
+        active.selectedTripID == nil ? "Logbook" : "Trip logbook"
+    }
+
+    private var emptyMessage: String {
+        if active.selectedTripID == nil {
+            return "Once you start logging, entries will appear here."
         } else {
-            return "Logbook"
+            return "This trip has no log entries yet."
         }
     }
 }
 
-// MARK: - Row view
+// MARK: - Row
 
 private struct LogRowView: View {
     let log: Logs
-    let isCompact: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
                 Text(log.dateOfLog, format: .dateTime.hour().minute())
                     .font(.subheadline)
 
@@ -143,7 +112,7 @@ private struct LogRowView: View {
             if !log.logEntry.isEmpty {
                 Text(log.logEntry)
                     .font(.body)
-                    .lineLimit(isCompact ? 2 : 3)
+                    .lineLimit(2)
             } else if !log.nextWaypoint.isEmpty {
                 Text("→ \(log.nextWaypoint)")
                     .font(.body)
@@ -154,7 +123,6 @@ private struct LogRowView: View {
     }
 
     private var shortPosition: String {
-        // Adjust this guard if 0,0 is ever a valid position for you
         guard log.posLat != 0 || log.posLong != 0 else { return "–" }
         let lat = degMinString(for: log.posLat, isLatitude: true)
         let lon = degMinString(for: log.posLong, isLatitude: false)
@@ -162,20 +130,18 @@ private struct LogRowView: View {
     }
 }
 
-// MARK: - Detail view, respecting LogbookSettings / LogField
+// MARK: - Detail
 
 private struct LogDetailView: View {
     let log: Logs
     let settings: LogbookSettings?
 
-    // Shortcuts into settings
     private func show(_ field: LogField) -> Bool {
         settings?.isLogFieldVisible(field) ?? true
     }
 
     var body: some View {
         Form {
-            // MARK: General
             Section("General") {
                 HStack {
                     Text("Date")
@@ -192,149 +158,83 @@ private struct LogDetailView: View {
 
                 if !log.logEntry.isEmpty {
                     VStack(alignment: .leading) {
-                        Text("Log text")
-                            .font(.subheadline)
-                        TextEditor(text: .constant(log.logEntry))
-                            .frame(minHeight: 80)
-                            .disabled(true)
+                        Text("Log text").font(.subheadline)
+                        Text(log.logEntry)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
                     }
                 }
             }
 
-            // MARK: Position & Route
             Section("Position & route") {
-                HStack(alignment: .top) {
-                    Text("Position")
-                    Spacer()
-                    Text(positionString)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.secondary)
-                }
+                row("Position", positionString, multiline: true)
 
                 if show(.nextWaypoint), !log.nextWaypoint.isEmpty {
-                    dataRow(label: "Next waypoint", value: log.nextWaypoint)
+                    row("Next waypoint", log.nextWaypoint)
                 }
                 if show(.distanceToWP), log.distanceToWP > 0 {
-                    dataRow(label: "Distance to WP",
-                            value: String(format: "%.1f nm", log.distanceToWP))
+                    row("Distance to WP", String(format: "%.1f nm", log.distanceToWP))
                 }
             }
 
-            // MARK: Navigation
             Section("Navigation") {
-                if show(.SOG), log.SOG > 0 {
-                    dataRow(label: "SOG", value: speedString(log.SOG))
-                }
-                if show(.SOW), log.STW > 0 {
-                    dataRow(label: "STW", value: speedString(log.STW))
-                }
-                if show(.COG), log.COG != 0 {
-                    dataRow(label: "COG", value: "\(log.COG)°")
-                }
-                if show(.magCourse), log.magHeading != 0 {
-                    dataRow(label: "Magnetic course", value: "\(log.magHeading)°")
-                }
+                if show(.SOG), log.SOG > 0 { row("SOG", speedString(log.SOG)) }
+                if show(.SOW), log.STW > 0 { row("STW", speedString(log.STW)) }
+                if show(.COG), log.COG != 0 { row("COG", "\(log.COG)°") }
+                if show(.magCourse), log.magHeading != 0 { row("Magnetic course", "\(log.magHeading)°") }
                 if show(.distanceSinceLastEntry), log.distanceSinceLastEntry > 0 {
-                    dataRow(label: "Distance since last entry",
-                            value: String(format: "%.1f nm", log.distanceSinceLastEntry))
+                    row("Distance since last entry", String(format: "%.1f nm", log.distanceSinceLastEntry))
                 }
                 if show(.averageSpeedSinceLastEntry), log.averageSpeedSinceLastEntry > 0 {
-                    dataRow(label: "Average speed",
-                            value: speedString(log.averageSpeedSinceLastEntry))
+                    row("Average speed", speedString(log.averageSpeedSinceLastEntry))
                 }
             }
 
-            // MARK: Tides & current
             Section("Tides & current") {
                 if show(.timeHighTide), log.timeHighTide > 0 {
-                    dataRow(label: "Time of high tide",
-                            value: String(format: "%.2f h", log.timeHighTide))
+                    row("Time of high tide", String(format: "%.2f h", log.timeHighTide))
                 }
                 if show(.speedOfCurrent), log.speedOfCurrent > 0 {
-                    dataRow(label: "Current speed",
-                            value: String(format: "%.1f kn", log.speedOfCurrent))
+                    row("Current speed", String(format: "%.1f kn", log.speedOfCurrent))
                 }
                 if show(.directionOfCurrent), log.directionOfCurrent > 0 {
-                    dataRow(label: "Current direction",
-                            value: String(format: "%.0f°", log.directionOfCurrent))
+                    row("Current direction", String(format: "%.0f°", log.directionOfCurrent))
                 }
             }
 
-            // MARK: Weather & sea
             Section("Weather & sea") {
-                if show(.pressure), log.pressure > 0 {
-                    dataRow(label: "Pressure",
-                            value: String(format: "%.0f hPa", log.pressure))
-                }
-                if show(.TWS), log.TWS != 0 {
-                    dataRow(label: "True wind speed", value: "\(log.TWS) kt")
-                }
-                if show(.TWD), log.TWD != 0 {
-                    dataRow(label: "True wind direction", value: "\(log.TWD)°")
-                }
-                if show(.windGust), log.windGust > 0 {
-                    dataRow(label: "Gusts",
-                            value: String(format: "%.0f kt", log.windGust))
-                }
-                if show(.windForce), log.windForce != 0 {
-                    dataRow(label: "Wind force", value: "\(log.windForce) Bft")
-                }
-                if show(.airTemp), log.airTemp != 0 {
-                    dataRow(label: "Air temperature", value: "\(log.airTemp)°C")
-                }
-                if show(.waterTemp), log.waterTemp != 0 {
-                    dataRow(label: "Water temperature", value: "\(log.waterTemp)°C")
-                }
-                if show(.seaState), !log.seaState.isEmpty {
-                    dataRow(label: "Sea state", value: log.seaState)
-                }
-                if show(.cloudCover), !log.cloudCover.isEmpty {
-                    dataRow(label: "Cloud cover", value: log.cloudCover)
-                }
+                if show(.pressure), log.pressure > 0 { row("Pressure", String(format: "%.0f hPa", log.pressure)) }
+                if show(.TWS), log.TWS != 0 { row("True wind speed", "\(log.TWS) kt") }
+                if show(.TWD), log.TWD != 0 { row("True wind direction", "\(log.TWD)°") }
+                if show(.windGust), log.windGust > 0 { row("Gusts", String(format: "%.0f kt", log.windGust)) }
+                if show(.windForce), log.windForce != 0 { row("Wind force", "\(log.windForce) Bft") }
+                if show(.airTemp), log.airTemp != 0 { row("Air temperature", "\(log.airTemp)°C") }
+                if show(.waterTemp), log.waterTemp != 0 { row("Water temperature", "\(log.waterTemp)°C") }
+                if show(.seaState), !log.seaState.isEmpty { row("Sea state", log.seaState) }
+                if show(.cloudCover), !log.cloudCover.isEmpty { row("Cloud cover", log.cloudCover) }
                 if show(.precipitation), log.precipitation != .none {
-                    dataRow(label: "Precipitation",
-                            value: friendlyLabel(from: log.precipitation.rawValue))
+                    row("Precipitation", friendlyLabel(from: log.precipitation.rawValue))
                 }
                 if show(.severeWeather), log.severeWeather != .none {
-                    dataRow(label: "Severe weather",
-                            value: friendlyLabel(from: log.severeWeather.rawValue))
+                    row("Severe weather", friendlyLabel(from: log.severeWeather.rawValue))
                 }
-                if show(.visibility), !log.visibility.isEmpty {
-                    dataRow(label: "Visibility", value: log.visibility)
-                }
+                if show(.visibility), !log.visibility.isEmpty { row("Visibility", log.visibility) }
             }
 
-            // MARK: Sails & propulsion
             Section("Sails & propulsion") {
                 if show(.propulsion), log.propulsion != .none {
-                    dataRow(label: "Propulsion",
-                            value: friendlyLabel(from: log.propulsion.rawValue))
+                    row("Propulsion", friendlyLabel(from: log.propulsion.rawValue))
                 }
-                if show(.pointOfSail), !log.pointOfSail.isEmpty {
-                    dataRow(label: "Point of sail", value: log.pointOfSail)
-                }
-                if show(.starboardTack) {
-                    dataRow(label: "Tack",
-                            value: log.starboardTack ? "Starboard" : "Port")
-                }
-
-                if show(.AWA), log.AWA != 0 {
-                    dataRow(label: "Apparent wind angle", value: "\(log.AWA)°")
-                }
-                if show(.AWS), log.AWS != 0 {
-                    dataRow(label: "Apparent wind speed", value: "\(log.AWS) kt")
-                }
-
-                if show(.steering) {
-                    dataRow(label: "Steering",
-                            value: friendlyLabel(from: log.steering.rawValue))
-                }
+                if show(.pointOfSail), !log.pointOfSail.isEmpty { row("Point of sail", log.pointOfSail) }
+                if show(.tack) { row("Tack", friendlyLabel(from: log.tack.rawValue))}
+                if show(.AWA), log.AWA != 0 { row("Apparent wind angle", "\(log.AWA)°") }
+                if show(.AWS), log.AWS != 0 { row("Apparent wind speed", "\(log.AWS) kt") }
+                if show(.steering) { row("Steering", friendlyLabel(from: log.steering.rawValue)) }
             }
         }
-        .navigationTitle(navTitle)
+        .navigationTitle(log.dateOfLog.formatted(date: .omitted, time: .shortened))
+        .navigationBarTitleDisplayMode(.inline)
     }
-
-    // MARK: Helpers
 
     private var positionString: String {
         guard log.posLat != 0 || log.posLong != 0 else { return "Unknown" }
@@ -343,31 +243,23 @@ private struct LogDetailView: View {
         return "\(lat)\n\(lon)"
     }
 
-    private var navTitle: String {
-        log.dateOfLog.formatted(date: .omitted, time: .shortened)
-    }
-
     @ViewBuilder
-    private func dataRow(label: String, value: String) -> some View {
-        HStack {
+    private func row(_ label: String, _ value: String, multiline: Bool = false) -> some View {
+        HStack(alignment: multiline ? .top : .center) {
             Text(label)
             Spacer()
             Text(value)
                 .foregroundStyle(.secondary)
+                .multilineTextAlignment(.trailing)
+                .textSelection(.enabled)
         }
     }
 
     private func speedString(_ value: Float) -> String {
-        guard value > 0 else { return "–" }
-        return String(format: "%.1f kn", value)
+        String(format: "%.1f kn", value)
     }
 
     private func friendlyLabel(from raw: String) -> String {
-        raw
-            .replacingOccurrences(of: "_", with: " ")
-            .capitalized
+        raw.replacingOccurrences(of: "_", with: " ").capitalized
     }
 }
-
-// MARK: - Degree-minute formatter
-

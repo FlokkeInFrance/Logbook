@@ -20,5 +20,51 @@
             landmarkType = "24">
          </BreakpointContent>
       </BreakpointProxy>
+      <BreakpointProxy
+         BreakpointExtensionID = "Xcode.Breakpoint.FileBreakpoint">
+         <BreakpointContent
+            uuid = "AC4BEE29-EB4D-41FB-A007-9D2BCACB3620"
+            shouldBeEnabled = "Yes"
+            ignoreCount = "0"
+            continueAfterRunningActions = "No"
+            filePath = "SailTrips/Model/NMEA/NMEA Test.swift"
+            startingColumnNumber = "9223372036854775807"
+            endingColumnNumber = "9223372036854775807"
+            startingLineNumber = "77"
+            endingLineNumber = "77"
+            landmarkName = "update(result:from:)"
+            landmarkType = "7">
+            <Locations>
+               <Location
+                  uuid = "AC4BEE29-EB4D-41FB-A007-9D2BCACB3620 - 67b843db6b175165"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "static SailTrips.NMEA0183Parser.update(result: inout SailTrips.NMEATestResult, from: Swift.String) -&gt; ()"
+                  moduleName = "SailTrips.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/jeroen/Desktop/SailTrips/SailTrips/Model/NMEA/NMEA%20Test.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "77"
+                  endingLineNumber = "77">
+               </Location>
+               <Location
+                  uuid = "AC4BEE29-EB4D-41FB-A007-9D2BCACB3620 - 67b843db6b175165"
+                  shouldBeEnabled = "Yes"
+                  ignoreCount = "0"
+                  continueAfterRunningActions = "No"
+                  symbolName = "static SailTrips.NMEA0183Parser.update(result: inout SailTrips.NMEATestResult, from: Swift.String) -&gt; ()"
+                  moduleName = "SailTrips.debug.dylib"
+                  usesParentBreakpointCondition = "Yes"
+                  urlString = "file:///Users/jeroen/Desktop/SailTrips/SailTrips/Model/NMEA/NMEA%20Test.swift"
+                  startingColumnNumber = "9223372036854775807"
+                  endingColumnNumber = "9223372036854775807"
+                  startingLineNumber = "77"
+                  endingLineNumber = "77">
+               </Location>
+            </Locations>
+         </BreakpointContent>
+      </BreakpointProxy>
    </Breakpoints>
 </Bucket>

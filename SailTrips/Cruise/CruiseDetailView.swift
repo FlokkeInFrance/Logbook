@@ -38,11 +38,15 @@ struct CruiseDetailView: View {
                 }
                 .underline(color: .init(UIColor.systemBlue))
                 if (cruise.status == .underway && instance.currentTrip == nil) {
-                    Button("Start Trip"){
-                        let newTrip = Trip()
-                        initTrip(inTrip: newTrip)
-                        modelContext.insert(newTrip)
-                        pathManager.path.append(HomePageNavigation.tripCompanion)
+                    Button("Start Trip") {
+                        do {
+                            let starter = TripStarter(context: modelContext)
+                            _ = try starter.startTrip(instances: instance) // cruises not needed
+                            try starter.setCurrentCruise(cruise, instances: instance)
+                            pathManager.path.append(HomePageNavigation.tripCompanion)
+                        } catch {
+                            print(error)
+                        }
                     }
                 }
             }
@@ -128,18 +132,17 @@ struct CruiseDetailView: View {
                     VStack(alignment: .leading) {
                         ForEach(cruise.legs, id: \.id) { loc in
                             Text(loc.Name)
-                                .onLongPressGesture (minimumDuration: 0.2){
-                                    if (cruise.status == .underway) {
-                                        if let trip=instance.currentTrip {
-                                            trip.destination = loc
-                                            pathManager.path.append(HomePageNavigation.tripCompanion)
-                                        } else {
-                                            let newTrip = Trip()
-                                            initTrip(inTrip: newTrip)
-                                            newTrip.destination = loc
-                                            modelContext.insert(newTrip)
-                                            pathManager.path.append(HomePageNavigation.tripCompanion)
-                                        }
+                                .onLongPressGesture(minimumDuration: 0.2) {
+                                    guard cruise.status == .underway else { return }
+                                    do {
+                                        let starter = TripStarter(context: modelContext)
+                                        let res = try starter.startTrip(instances: instance)
+                                        try starter.setCurrentCruise(cruise, instances: instance)
+                                        res.trip.destination = loc
+                                        try? modelContext.save()
+                                        pathManager.path.append(HomePageNavigation.tripCompanion)
+                                    } catch {
+                                        print(error)
                                     }
                                 }
                         }
@@ -162,7 +165,7 @@ struct CruiseDetailView: View {
             LocationSelectorView(selectedLocations: $cruise.legs)
         }
     }
-    private func initTrip(inTrip: Trip){
+    /*private func initTrip(inTrip: Trip){
         inTrip.tripType = .legOfCruise
         inTrip.boat = instance.selectedBoat
         inTrip.dateOfStart = Date.now
@@ -170,5 +173,5 @@ struct CruiseDetailView: View {
         inTrip.crew = cruise.Crew
         instance.currentTrip = inTrip
         instance.dateOfStart = Date.now
-    }
+    }*/
 }

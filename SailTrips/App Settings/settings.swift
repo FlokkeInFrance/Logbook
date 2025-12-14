@@ -12,6 +12,7 @@ struct SettingsView: View {
   @Query private var settings: [LogbookSettings]
     @Environment(\.modelContext) private var modelContext: ModelContext
 
+    // TODO: *** Add a toggle to select STW or SOG to make TWD and TWS calculations.
   var body: some View {
     Form {
       Section("Units") {

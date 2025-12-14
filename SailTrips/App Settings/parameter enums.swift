@@ -23,6 +23,11 @@ enum VolumeUnit: String, Codable, CaseIterable, Sendable {
 enum PressureUnit: String, Codable, CaseIterable, Sendable {
   case mmHg, inchHg, mbar, hPa
 }
+enum TrueWindReference: String, Codable, CaseIterable {
+    case water
+    case ground
+}
+
 
 enum LogField: String, Codable, CaseIterable, Sendable, Identifiable {
     // Nav Info
@@ -56,7 +61,7 @@ enum LogField: String, Codable, CaseIterable, Sendable, Identifiable {
     case AWA
     case AWS
     case pointOfSail
-    case starboardTack
+    case tack
     case propulsion
     case steering
     var id: Self { self }

@@ -529,7 +529,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var AWA: Int=0
         var AWS: Int=0
         var pointOfSail: String = ""
-        var starboardTack: Bool = true
+        var tack: Tack = Tack.none
         var propulsion: PropulsionTool = PropulsionTool.none
         var steering: Steering = Steering.byHand
         init (id: UUID=UUID(), trip: Trip){

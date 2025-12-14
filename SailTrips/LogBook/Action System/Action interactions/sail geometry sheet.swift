@@ -35,7 +35,7 @@ struct SailingGeometrySheet: View {
 
         let inst = runtime.instances
 
-        // Default tack: if .none, assume starboard as a starting point
+        // Default t/Users/jeroen/Desktop/SailTrips/SailTrips/Model/NMEA/NMEA Test.swiftack: if .none, assume starboard as a starting point
         let initialTack: Tack = (inst.tack == .none) ? .starboard : inst.tack
         _selectedTack = State(initialValue: initialTack)
         _selectedPointOfSail = State(initialValue: inst.pointOfSail)

@@ -70,7 +70,9 @@ struct LogActionView: View {
     @State private var textPromptRequest: ActionTextPromptRequest?
 
     @State private var showNMEATestSheet = false
-    
+    // LogActionView.swift
+
+    @StateObject private var pos = PositionUpdater()
     
     // MARK: - Init
     
@@ -90,44 +92,8 @@ struct LogActionView: View {
         let derived = instances.derivedSituationID()
         _currentSituationID = State(initialValue: initialSituationID ?? derived)
     }
-    
-    
-    // MARK: - Derived context
-    
-    private var actionContext: ActionContext {
-        ActionContext(
-            instances: instances,
-            modelContext: modelContext,
-            showBanner: { message in
-                showBanner(message)
-                bannerText = message
-                withAnimation {
-                    showBannerView = true
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
-                    withAnimation {
-                        showBannerView = false
-                    }
-                }
-            },
-            openDangerSheet: openDangerSheet,
-              /*  { variant in
-                let rt = ActionRuntime(context: actionContext, variant: variant)
-                dangerRuntime = rt
-                showDangerSheet = true
-            },*/
-            presentTextPrompt: { request in
-                // move to the main actor because we're touching @State
-                Task { @MainActor in
-                    textPromptRequest = request
-                }
-            }
-            
-            )
-    }
 
-    
-    /// Current situation definition (if any).
+    // Current situation definition (if any).
     private var currentDefinition: SituationDefinition? {
         situations.first { $0.id == currentSituationID }
     }
@@ -152,6 +118,7 @@ struct LogActionView: View {
         //"AF12", // Back to trip page
         "AF14", // Change destination
         "AF15", // Log position
+        "AF15x", //test nmea stream
         "AF16", // Goto next WPT
         "AF17"  // Extra rigging
     ]
@@ -185,7 +152,7 @@ struct LogActionView: View {
     
     /// Sixth line: other logs
     private let otherLogTags: [String] = [
-        "AF5", "AF6", "AF15"
+        "AF5", "AF6", "AF15", "AF15x"
     ]
     
     
@@ -193,6 +160,33 @@ struct LogActionView: View {
     private var gridColumns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 8), count: 4)
     }
+    
+    // define the actionContext
+
+    private var actionContext: ActionContext {
+        ActionContext(
+            instances: instances,
+            modelContext: modelContext,
+            showBanner: { msg in
+                showBanner(msg)
+                bannerText = msg
+                withAnimation { showBannerView = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    withAnimation { showBannerView = false }
+                }
+            },
+            openDangerSheet: openDangerSheet,
+            presentTextPrompt: { request in
+                Task { @MainActor in textPromptRequest = request }
+            },
+            positionUpdater: pos,
+            nmeaSnapshot: {
+                // later: return nmeaAdapter.latestSnapshot
+                nil
+            }
+        )
+    }
+
     
     // MARK: - Body
     
@@ -510,7 +504,7 @@ struct LogActionView: View {
     
     private func runAction(_ variant: ActionVariant) {
         
-        if variant.tag == "AF15" {
+        if variant.tag == "AF15x" {
             showNMEATestSheet = true
             return
         }
@@ -546,7 +540,7 @@ struct LogActionView: View {
 
         // Special exception: A39 + close-hauled => just flip tack, no sheet
         if variant.tag == "A39",
-           rt.instances.pointOfSail == .closeHauled {
+           rt.instances.pointOfSail == PointOfSail.closeHauled {
             variant.handler(rt)          // handler will flip tack + log
             rederiveSituation()
             return

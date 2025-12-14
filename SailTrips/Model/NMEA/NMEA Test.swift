@@ -51,9 +51,10 @@ struct NMEATestResult {
         pressure != nil &&
         airTemp != nil &&
         waterTemp != nil &&
-        magHeading != nil &&
-        heel != nil
+        magHeading != nil
+        // heel is optional for now
     }
+
 }
 
 enum NMEAError: Error {
@@ -302,6 +303,10 @@ final class NMEAUDPClient {
     func runSample(timeout: TimeInterval, cancelFlag: @escaping () -> Bool) async throws -> NMEATestResult {
         var result = NMEATestResult()
 
+        // For N2K, we keep a separate snapshot and a parser
+        var n2kSnapshot = NMEA2000Snapshot()
+        let n2kParser = NMEA2000Parser()
+
         let queue = DispatchQueue(label: "NMEAUDPClient")
         connection.stateUpdateHandler = { newState in
             switch newState {
@@ -323,11 +328,19 @@ final class NMEAUDPClient {
             guard !data.isEmpty else { continue }
 
             if let text = String(data: data, encoding: .ascii) {
-                for line in text.split(whereSeparator: \.isNewline) {
-                    let s = String(line)
-                    // For now, treat both modes as 0183 text stream.
-                    // Later: add dedicated N2K PGN parsing for `.nmea2000`.
-                    NMEA0183Parser.update(result: &result, from: s)
+                for lineSub in text.split(whereSeparator: \.isNewline) {
+                    let line = String(lineSub)
+
+                    switch mode {
+                    case .nmea0183:
+                        NMEA0183Parser.update(result: &result, from: line)
+
+                    case .nmea2000:
+                        // YDNR RAW N2K log line -> NMEA2000Snapshot
+                        n2kParser.update(fromRawLine: line, into: &n2kSnapshot)
+                        // Map snapshot into the test result used by the sheet
+                        map(snapshot: n2kSnapshot, into: &result)
+                    }
                 }
             }
         }
@@ -349,7 +362,59 @@ final class NMEAUDPClient {
             }
         }
     }
+
+    /// Copy non-nil values from the N2K snapshot into the test result.
+    private func map(snapshot: NMEA2000Snapshot, into result: inout NMEATestResult) {
+        if let lat = snapshot.latitude {
+            result.gpsLat = lat
+        }
+        if let lon = snapshot.longitude {
+            result.gpsLong = lon
+        }
+        if let stw = snapshot.stw {
+            result.STW = Float(stw)
+        }
+        if let sog = snapshot.sog {
+            result.SOG = Float(sog)
+        }
+
+        if let awa = snapshot.awa {
+            result.AWA = Int(awa.rounded())
+        }
+        if let aws = snapshot.aws {
+            result.AWS = Int(aws.rounded())
+        }
+        if let twa = snapshot.twa {
+            result.TWA = Int(twa.rounded())
+        }
+        if let tws = snapshot.tws {
+            result.TWS = Int(tws.rounded())
+        }
+        if let twd = snapshot.twd {
+            result.TWD = Int(twd.rounded())
+        }
+
+        if let p = snapshot.barometricPressure {
+            result.pressure = Float(p)
+        }
+        if let tAir = snapshot.airTemperature {
+            result.airTemp = Int(tAir.rounded())
+        }
+        if let tWater = snapshot.waterTemperature {
+            result.waterTemp = Int(tWater.rounded())
+        }
+
+        // Prefer magnetic heading if present; fall back to true heading
+        if let hMag = snapshot.magneticHeading {
+            result.magHeading = Int(hMag.rounded())
+        } else if let hTrue = snapshot.trueHeading {
+            result.magHeading = Int(hTrue.rounded())
+        }
+
+        // Heel intentionally left out for now (Raymarine proprietary PGN)
+    }
 }
+
 
 final class NMEANetworkService: @unchecked Sendable {
     private var isCancelled = false
@@ -386,31 +451,16 @@ final class NMEANetworkService: @unchecked Sendable {
         }
 
         do {
-            let client = try NMEAUDPClient(host: host, port: port, mode: mode)
-            // 30 seconds max by default; tweak if you like.
-            let result = try await client.runSample(timeout: 30.0) { [weak self] in
-                self?.isCancelled ?? false
-            }
+            let receiver = NMEAUDPBroadcastReceiver(mode: mode)
+            let result = try await receiver.runSample(
+                port: port,
+                timeout: 30.0
+            ) { [weak self] in self?.isCancelled ?? false }
 
             return result
         } catch {
-            return NMEATestResult(
-                gpsLat: nil,
-                gpsLong: nil,
-                STW: nil,
-                SOG: nil,
-                AWA: nil,
-                AWS: nil,
-                TWA: nil,
-                TWS: nil,
-                TWD: nil,
-                pressure: nil,
-                airTemp: nil,
-                waterTemp: nil,
-                magHeading: nil,
-                heel: nil,
-                error: "Connection / parsing error: \(error)"
-            )
+            return NMEATestResult(/* same error fill as you already do */ error: "Connection / parsing error: \(error)")
         }
+
     }
 }

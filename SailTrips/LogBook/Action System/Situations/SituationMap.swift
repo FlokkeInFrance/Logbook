@@ -109,7 +109,7 @@ extension ActionRegistry {
                 "A27", "A30", "A29", "A28",     // Add sails
                 "A50", "A24", "A21", "A23", "A20", // Navigation (A24 if WPT)
                 "A25", "A25R", "A26",           // Steering / AP
-                "A12", "A14", "A15","A22",            // Change zone
+                "A13", "A14", "A15","A22",            // Change zone
                 "A16"                           // Approach
             ]
         ),
@@ -123,7 +123,7 @@ extension ActionRegistry {
                 "A27", "A30", "A29", "A28",     // Add sails
                 "A50", "A24", "A21", "A23", "A20", // Navigation
                 "A25", "A25R", "A26",           // Steering / AP
-                "A13", "A15",                // Change zone
+                "A12", "A14",                  // Change zone
                 "A16"                           // Approach
             ]
         ),
@@ -152,7 +152,7 @@ extension ActionRegistry {
                 "A27", "A30", "A29", "A28",     // Add sails
                 "A23", "A24",                   // Navigate (A24 if WPT)
                 "A21",                          // Forced navigation
-                "A13","A22"                           // Change zone
+                "A12","A22"                           // Change zone
             ]
         ),
         
@@ -163,7 +163,7 @@ extension ActionRegistry {
                     "A3", "A5", "A4", "A6",         // Motor regime
                     "A25", "A25R", "A26",           // Steering
                     "A27", "A30", "A29", "A28",     // Add sails
-                    "A14", "A13"                    // Change zone
+                    "A12", "A13"                    // Change zone
                 ]
             ),
         
@@ -176,11 +176,11 @@ extension ActionRegistry {
                 "A41", "A42", "A27W", "A27WR",          // Modify sail shape
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
+                "A28", "A27R",                          // Modify sail plan
                 "A50", "A24", "A21", "A23", "A20", // Navigation
                 "A25", "A25R", "A26",           // Steering
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
-                "A12", "A14", "A15","A22",            // Change zone
+                "A13", "A14", "A15","A22",            // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -194,12 +194,12 @@ extension ActionRegistry {
                 "A39", "A40", "A43", "A44",     // Modify AWA
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
+                "A28", "A27R",                          // Modify sail plan
                 "A41", "A42", "A27W", "A27WR",          // Modify sail shape
                 "A25", "A25R", "A26",           // Steering
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
                 "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A13",                   // Change zone
+                "A12", "A14",                   // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -208,17 +208,17 @@ extension ActionRegistry {
         // S53 – intercoastal waterway, under sail / motorsail, ≤4 Bft
         .s53WaterwaySail: SituationDefinition(
             id: .s53WaterwaySail,
-            title: "Intercostal waterway, under sail (≤4 Bft)",
+            title: "Intracoastal waterway, under sail (≤4 Bft)",
             actionTags: [
                 "A39", "A40", "A43", "A44",     // Modify AWA
                 "A25", "A25R", "A26",           // Steering
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
+                "A28", "A27R",                          // Modify sail plan
                 "A41", "A42", "A27W", "A27WR",           // Modify sail shape
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
                 "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A13",                   // Change zone
+                "A12", "A15",                   // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -233,11 +233,11 @@ extension ActionRegistry {
                 "A25", "A25R", "A26",           // Steering
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
+                "A28", "A27R",                          // Modify sail plan
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
                 "A41", "A42", "A27W", "A27WR",           // Modify sail shape
                 "A24", "A21", "A23", "A20",     // Navigate
-                "A13","A22"                           // Change zone
+                "A12","A22"                           // Change zone
             ]
         ),
         
@@ -250,10 +250,10 @@ extension ActionRegistry {
                 "A25", "A25R", "A26",           // Steering
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
+                "A28", "A27R",                          // Modify sail plan
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
                 "A41", "A42", "A27W", "A27WR",           // Modify sail shape
-                "A14","A13"                            // Change zone
+                "A12","A13"                            // Change zone
             ]
         ),
         
@@ -267,10 +267,10 @@ extension ActionRegistry {
                 "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
+                "A28", "A27R",                          // Modify sail plan
                 "A50", "A24", "A21", "A23", "A20", // Navigation
                 "A25", "A25R", "A26",           // Steering
-                "A14", "A12", "A15","A22",            // Change zone
+                "A13", "A14", "A15","A22",            // Change zone
                 "A16",                          // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
@@ -279,17 +279,17 @@ extension ActionRegistry {
             id: .s52wProtectedSailStrong,
             title: "Protected water, under sail, strong wind",
             actionTags: [
-                "A33R", "A33F", "A34", "A35F", "A35R", "A36", //Reef
-                "A39", "A40", "A43", "A44",     // Modify AWA
+                "A33R", "A33F", "A34", "A35F", "A35R", "A36",   //Reef
+                "A39", "A40", "A43", "A44",                     // Modify AWA
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
-                "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
-                "A25", "A25R", "A26",           // Steering
-                "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A13", "A15",                   // Change zone
-                "A16",                          // Approach
-                "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
+                "A28", "A27R",                                  // Modify sail plan
+                "A41", "A42",  "A27W", "A27WR",                 // Modify sail shape
+                "A25", "A25R", "A26",                           // Steering
+                "A50", "A24", "A21", "A23", "A20",              // Navigation
+                "A12", "A14",                                   // Change zone
+                "A16",                                          // Approach
+                "A3", "A5", "A4", "A6"                          // Motor regime (if motorsail)
             ]
         ),
         .s53wWaterwaySailStrong: SituationDefinition(
@@ -297,16 +297,16 @@ extension ActionRegistry {
             title: "Intracoastal Waterway, under sail, strong wind",
             actionTags: [
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
-                "A39", "A40", "A43", "A44",     // Modify AWA
-                "A25", "A25R", "A26",           // Steering
+                "A39", "A40", "A43", "A44",         // Modify AWA
+                "A25", "A25R", "A26",               // Steering
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
-                "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
-                "A50", "A24", "A21", "A23", "A20", // Navigation
-                "A12", "A13",                   // Change zone
-                "A16",                          // Approach
-                "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
+                "A28", "A27R",                      // Modify sail plan
+                "A41", "A42",  "A27W", "A27WR",     // Modify sail shape
+                "A50", "A24", "A21", "A23", "A20",  // Navigation
+                "A12", "A15",                       // Change zone
+                "A16",                              // Approach
+                "A3", "A5", "A4", "A6"              // Motor regime (if motorsail)
             ]
         ),
         .s54wOpenSeaSailStrong: SituationDefinition(
@@ -318,10 +318,10 @@ extension ActionRegistry {
                 "A25", "A25R", "A26",           // Steering
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
-                "A41", "A42",  "A27W", "A27WR",                  // Modify sail shape
+                "A28", "A27R",                  // Modify sail plan
+                "A41", "A42",  "A27W", "A27WR", // Modify sail shape
                 "A24", "A21", "A23", "A20",     // Navigate
-                "A13","A22"                          // Change zone
+                "A12","A22"                     // Change zone
             ]
         ),
         
@@ -330,13 +330,13 @@ extension ActionRegistry {
             title: "Traffic Lane under sail (≤4 Bft)",
             actionTags: [
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
-                "A39", "A40", "A43", "A44",     // Modify AWA
-                "A25", "A25R", "A26",           // Steering
+                "A39", "A40", "A43", "A44",                   // Modify AWA
+                "A25", "A25R", "A26",                         // Steering
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R",
-                "A28",                          // Modify sail plan
-                "A41", "A42", "A27W", "A27WR",           // Modify sail shape
-                "A13","A14"                           // Change zone
+                "A28", "A27R",                                 // Modify sail plan
+                "A41", "A42", "A27W", "A27WR",                // Modify sail shape
+                "A12","A13"                                   // Change zone
             ]
         ),
         
@@ -349,7 +349,7 @@ extension ActionRegistry {
                 "A3", "A5", "A4", "A6",         // Motor regime
                 "A11HR", "A11AR", "A11BR",      // Enter zone
                 "A25", "A25R", "A26",           // Steering
-                "A12"                           // Abort approach
+                "A12","A14","A15"               // Abort approach
             ]
         ),
         
@@ -361,7 +361,7 @@ extension ActionRegistry {
                 "A27R", "A28", "A29R", "A30R", "A31R", "A32R", // Modify sail plan
                 "A11HR", "A11AR", "A11BR",      // Enter zone
                 "A25", "A25R", "A26",           // Steering
-                "A12",                          // Abort approach
+                "A12","A14","A15",                          // Abort approach
                 "A3", "A5", "A4", "A6"          // Motor regime (if motorsail)
             ]
         ),
