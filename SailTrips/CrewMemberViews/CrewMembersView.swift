@@ -46,39 +46,6 @@ struct CrewMembersView: View {
                 ACrewMember(crewMember: crewM)
             }
         }
-        /*NavigationSplitView {
-            List(filteredCrewMembers, selection: $selectedCrewMember) { member in
-                HStack {
-                    VStack(alignment: .leading) {
-            
-                            Text("\(member.LastName), \(member.FirstName)")
-                                .font(.headline)
-
-                            Text("\(member.Town) - \(member.Country)")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                    }
-                }
-                .tag(member)
-                
-            }
-            .navigationTitle("Crew Members")
-            .searchable(text: $searchText, prompt: "Search")
-            .toolbar {
-                Button(action: addCrewMember) {
-                    Label("Add", systemImage: "plus")
-                }
-            }
-        } detail: {
-            if let selectedCrewMember {
-                ACrewMember(crewMember: selectedCrewMember)
-            } else {
-                Text("Select a Member")
-                    .foregroundStyle(.secondary)
-            }
-                //.navigationTitle("Crew Member Details")
-        }.navigationTitle("Crew Member Details")*/
-        //end of splitview
     }
     
     private func didDismiss() {
@@ -87,7 +54,7 @@ struct CrewMembersView: View {
                
      private func addCrewMember() {
          withAnimation {
-             let newMember = CrewMember(lastName: "L", firstName: "F")
+             let newMember = CrewMember(lastName: "", firstName: "")
              selectedCrewMember = newMember
              modelContext.insert(newMember)
              showDetail = true

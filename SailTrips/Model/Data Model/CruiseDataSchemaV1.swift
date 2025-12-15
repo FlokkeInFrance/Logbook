@@ -27,6 +27,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
          ChecklistItem.self,
          ChecklistHeader.self,
          ChecklistSection.self,
+         Document.self,
          Picture.self,
          ToService.self,
          MagVar.self,
@@ -235,6 +236,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var insurancePhoneNumber: String = ""
         var insuranceLink: String = ""
         var usualPort: String = ""
+        @Relationship(deleteRule: .cascade) var documents: [Document] = []
         //dimensions
         var length: Float = 0
         var beam: Float = 0
@@ -249,9 +251,6 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var wifiNMEAPort: String = ""
         var wifiNMEAPW: String = ""
         
-        @Attribute(.externalStorage) var RegistrationPDF: Data? //will be nice to have those in the app
-        @Attribute(.externalStorage) var InsurancePDF: Data?
-        
         init(id: UUID=UUID(),name: String="",boatType: PropulsionType)
         {
             self.id = id
@@ -259,8 +258,6 @@ enum CruiseDataSchemaV1: VersionedSchema {
             self.boatType = boatType
         }
     }
-    
-
     
     @Model
     final class CrewMember {
@@ -282,7 +279,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var EmergencyPhone: String = ""
         var EmergencyMail: String = ""
         var EmergencyAdress: String = ""
-        @Attribute(.externalStorage) var IdentityPDF: Data?
+        @Relationship(deleteRule: .cascade) var documents: [Document] = []
          
         init(id: UUID=UUID(), lastName: String, firstName: String) {
             self.id = id
@@ -546,6 +543,20 @@ enum CruiseDataSchemaV1: VersionedSchema {
 
         init(id: UUID = .init(), data: Data) {
             self.id = id
+            self.data = data
+        }
+    }
+    
+    @Model
+    final class Document {
+        @Attribute(.unique) var id: UUID
+        var title: String = ""
+        @Attribute(.externalStorage) var data: Data
+        var rotationDegrees: Int = 0
+        
+        init(id: UUID = .init(), title: String = "", data: Data) {
+            self.id = id
+            self.title = title
             self.data = data
         }
     }

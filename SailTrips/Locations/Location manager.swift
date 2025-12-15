@@ -155,7 +155,7 @@ struct LocationDetailView: View {
                                 Image(uiImage: ui)
                                     .resizable()
                                     .frame(width: 100, height: 50)
-                                    .onLongPressGesture {
+                                    .onTapGesture(count: 2) {
                                         fullImage = ui
                                     }
                                     .contextMenu {

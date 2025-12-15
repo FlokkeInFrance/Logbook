@@ -19,7 +19,7 @@ extension Boat {
 
 struct BoatDetailsView: View {
     @Bindable var aBoat: Boat
-
+    
     @State private var isFileImporterPresented: Bool = false
     @State private var isIFileImporterPresented: Bool = false
     @State private var isSailSheetPresented: Bool = false
@@ -32,9 +32,9 @@ struct BoatDetailsView: View {
     @State private var isValidAxiomIP: Bool = true
     @State private var isValidNMEAIP: Bool = true
     @State private var isRigSheetPresented: Bool = false
-
+    
     @FocusState var focus: Bool
-
+    
     static let myFormat: NumberFormatter = {
         let nf = NumberFormatter()
         nf.numberStyle = .decimal
@@ -42,13 +42,19 @@ struct BoatDetailsView: View {
         nf.maximumFractionDigits = 2
         return nf
     }()
-
+    
     static let myIntFormat: NumberFormatter = {
         let nf = NumberFormatter()
         nf.numberStyle = .none
         return nf
     }()
-
+    
+    private func isValidIP(_ ip: String) -> Bool {
+        let pattern = "^((25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)$"
+        let pred = NSPredicate(format: "SELF MATCHES %@", pattern)
+        return pred.evaluate(with: ip)
+    }
+    
     var body: some View {
         Form {
             Section(header: Text("The Boat")) {
@@ -65,7 +71,7 @@ struct BoatDetailsView: View {
                 TextField("Brand", text: $aBoat.brand).autocorrectionDisabled()
                 TextField("Type", text: $aBoat.modelType).autocorrectionDisabled()
             }
-
+            
             Section(header: Text("Description")) {
                 Picker("Propulsion", selection: $aBoat.boatType) {
                     ForEach(PropulsionType.allCases) { value in
@@ -78,7 +84,7 @@ struct BoatDetailsView: View {
                 if aBoat.boatType == .sailboat || aBoat.boatType == .motorsailer {
                     // SAILS LIST & MODIFIER Hide this section if not a sailboat
                     TextField("Rig Type", text: $aBoat.otherType).autocorrectionDisabled()
-                   
+                    
                     HStack {
                         Text("Sails")
                         Spacer()
@@ -110,7 +116,7 @@ struct BoatDetailsView: View {
                     }
                 }
                 VStack(alignment: .leading) {
-                  
+                    
                     ForEach(aBoat.motors, id: \.id) { motor in
                         HStack {
                             Text(motor.use.label)
@@ -146,9 +152,8 @@ struct BoatDetailsView: View {
                         }
                     }
                 }
-                
             }
-
+            
             Section(header: Text("Dimensions")) {
                 NumberField(label: "Hull Length", inData: $aBoat.length,
                             inString: BoatDetailsView.myFormat.string(for: aBoat.length) ?? "")
@@ -163,7 +168,7 @@ struct BoatDetailsView: View {
                 NumberField(label: "Displacement", inData: $aBoat.weight,
                             inString: BoatDetailsView.myFormat.string(for: aBoat.weight) ?? "")
             }
-
+            
             Section(header: Text("Administrative Data")) {
                 TextField("Reg Num", text: $aBoat.registrationNumber).autocorrectionDisabled()
                 DatePicker("First Registration", selection: $aBoat.dateOfRegistration, in: ...Date(), displayedComponents: .date)
@@ -171,56 +176,32 @@ struct BoatDetailsView: View {
                 TextField("Hull Number", text: $aBoat.hullNumber).autocorrectionDisabled()
                 TextField("Home Harbor", text: $aBoat.usualPort).autocorrectionDisabled()
                 TextField("Category of Navigation", text: $aBoat.navCategory).autocorrectionDisabled()
-                PDFThumbnailView(pdfData: aBoat.RegistrationPDF, emptyString: "enter PDF of Registration Document")
-                Button("Select PDF of Registration") {
-                    isFileImporterPresented = true
-                }
-                .fileImporter(
-                    isPresented: $isFileImporterPresented,
-                    allowedContentTypes: [.pdf],
-                    allowsMultipleSelection: false
-                ) { result in
-                    do {
-                        let selectedFile = try result.get().first
-                        if let fileURL = selectedFile {
-                            aBoat.RegistrationPDF = try Data(contentsOf: fileURL)
-                        }
-                    } catch {
-                        print("Error loading PDF: \(error)")
-                    }
-                }
             }
-
+            
+            Section("Documents") {
+                DocumentStrip(
+                    documents: $aBoat.documents,
+                    suggestedTitles: [
+                        "Registration certificate",
+                        "Proof of insurance",
+                        "Radio certificate",
+                        "Maintenance certificate"
+                    ]
+                )
+            }
+            
             Section(header: Text("Radio")) {
                 TextField("MMSI", text: $aBoat.MMSI).autocorrectionDisabled()
                 TextField("Call Sign", text: $aBoat.callsign).autocorrectionDisabled()
                 Toggle(isOn: $aBoat.hasEpirb) { Text("has an EPIRB") }
             }
-
+            
             Section(header: Text("Insurance")) {
                 TextField("Insurance Company", text: $aBoat.insuranceCompany).autocorrectionDisabled()
                 TextField("Insurance Number", text: $aBoat.insuranceNumber).autocorrectionDisabled()
                 TextField("Insurance Phone", text: $aBoat.insurancePhoneNumber).autocorrectionDisabled()
-                PDFThumbnailView(pdfData: aBoat.InsurancePDF, emptyString: "Select PDF of Insurance Document")
-                Button("Select PDF of Insurance Document") {
-                    isIFileImporterPresented = true
-                }
-                .fileImporter(
-                    isPresented: $isIFileImporterPresented,
-                    allowedContentTypes: [.pdf],
-                    allowsMultipleSelection: false
-                ) { result in
-                    do {
-                        let selectedInsFile = try result.get().first
-                        if let fileURL = selectedInsFile {
-                            aBoat.InsurancePDF = try Data(contentsOf: fileURL)
-                        }
-                    } catch {
-                        print("Error loading PDF: \(error)")
-                    }
-                }
             }
-
+            
             Section(header: Text("Network")) {
                 VStack(alignment: .leading) {
                     TextField("NMEA WIFI IP", text: $aBoat.wifiNMEAIP)
@@ -268,11 +249,6 @@ struct BoatDetailsView: View {
                 isPresented: $isRigSheetPresented
             )
         }
-    }
-    private func isValidIP(_ ip: String) -> Bool {
-        let pattern = "^((25[0-5]|2[0-4]\\d|[01]?\\d?\\d)\\.){3}(25[0-5]|2[0-4]\\d|[01]?\\d?\\d)$"
-        let pred = NSPredicate(format: "SELF MATCHES %@", pattern)
-        return pred.evaluate(with: ip)
     }
 }
 
@@ -462,7 +438,7 @@ struct MotorModifyView: View {
 
             if isAdding {
                 Form {
-                    TextField("Name", text: $newMotor.name)
+                    TextField("Name", text: $newMotor.name).autocorrectionDisabled()
                     Picker("Use", selection: $newMotor.use) {
                         ForEach(MotorUse.allCases) { m in Text(m.label).tag(m) }
                     }
@@ -470,9 +446,9 @@ struct MotorModifyView: View {
                         ForEach(MotorEnergy.allCases) { e in Text(e.label).tag(e) }
                     }
                     Toggle("Inboard", isOn: $newMotor.inboard)
-                    TextField("Brand", text: $newMotor.motorBrand)
-                    TextField("Type", text: $newMotor.motorType)
-                    TextField("Power", text: $newMotor.motorPower)
+                    TextField("Brand", text: $newMotor.motorBrand).autocorrectionDisabled()
+                    TextField("Type", text: $newMotor.motorType).autocorrectionDisabled()
+                    TextField("Power", text: $newMotor.motorPower).autocorrectionDisabled()
                     HStack {
                         Button("Add") {
                             motors.append(newMotor)
@@ -511,32 +487,30 @@ struct MotorModifyView: View {
         if let idx = selectedIndex { motors.remove(at: idx); selectedIndex = nil }
     }
 }
-
-// MARK: - RigModifyView
 // MARK: - RigModifyView
 
 struct RigModifyView: View {
     let boat: Boat
     @Binding var inventory: [CruiseDataSchemaV1.InventoryItem]
     @Binding var isPresented: Bool
-
+    
     @State private var customItemEnabled: Bool = false
     @State private var customItemName: String = ""
-
+    
     @Environment(\.dismiss) private var dismiss
-
+    
     /// All standard extra-rig items (we don’t use `.other` as a standard entry)
     private var standardRigs: [ExtraRigging] {
         ExtraRigging.allCases.filter { $0 != .other }
     }
-
+    
     /// Existing “custom” extra-rig item (type == .extraRigging, kind == nil)
     private var existingCustomItem: CruiseDataSchemaV1.InventoryItem? {
         inventory.first {
             $0.type == .extraRigging && $0.extraRiggingKind == nil && $0.boat === boat
         }
     }
-
+    
     var body: some View {
         NavigationStack {
             Form {
@@ -547,7 +521,7 @@ struct RigModifyView: View {
                         }
                     }
                 }
-
+                
                 Section("Custom item") {
                     Toggle("Track a personal item", isOn: $customItemEnabled)
                     if customItemEnabled {
@@ -585,9 +559,9 @@ struct RigModifyView: View {
             }
         }
     }
-
+    
     // MARK: - Standard rig helpers
-
+    
     private func hasRig(_ rig: ExtraRigging) -> Bool {
         inventory.contains {
             $0.type == .extraRigging &&
@@ -595,10 +569,10 @@ struct RigModifyView: View {
             $0.boat === boat
         }
     }
-
+    
     private func addRigIfMissing(_ rig: ExtraRigging) {
         guard !hasRig(rig) else { return }
-
+        
         let item = CruiseDataSchemaV1.InventoryItem(
             boat: boat,
             name: rig.defaultName,
@@ -612,7 +586,7 @@ struct RigModifyView: View {
         )
         inventory.append(item)
     }
-
+    
     private func removeRig(_ rig: ExtraRigging) {
         inventory.removeAll {
             $0.type == .extraRigging &&
@@ -620,7 +594,7 @@ struct RigModifyView: View {
             $0.boat === boat
         }
     }
-
+    
     private func binding(for rig: ExtraRigging) -> Binding<Bool> {
         Binding(
             get: { hasRig(rig) },
@@ -633,12 +607,12 @@ struct RigModifyView: View {
             }
         )
     }
-
+    
     // MARK: - Custom item helpers
-
+    
     private func applyCustomItem() {
         let trimmed = customItemName.trimmingCharacters(in: .whitespacesAndNewlines)
-
+        
         if customItemEnabled, !trimmed.isEmpty {
             if let existing = existingCustomItem {
                 // Update existing
@@ -673,3 +647,4 @@ struct RigModifyView: View {
         }
     }
 }
+

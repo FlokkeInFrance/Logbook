@@ -30,6 +30,7 @@ typealias Sail = CruiseDataSchemaV1.Sail
 typealias Memento = CruiseDataSchemaV1.Memento
 typealias LogbookSettings = CruiseDataSchemaV1.LogbookSettings
 typealias InventoryItem = CruiseDataSchemaV1.InventoryItem
+typealias Document = CruiseDataSchemaV1.Document
 
 // MARK: - Pattern helpers
 

@@ -21,7 +21,7 @@ struct ACrewMember: View {
             dismiss()
         }
         Form{
-            //Text ("Details for \(crewMember.FirstName) \(crewMember.LastName)")
+            Section("Identity and contact sheet"){
             TextField("Last Name",text: $crewMember.LastName).disableAutocorrection(true)
             TextField("First Name", text: $crewMember.FirstName).disableAutocorrection(true)
             DatePicker("Birthdate :", selection: $crewMember.DateOfBirth, in: ...Date(), displayedComponents: .date)
@@ -43,27 +43,22 @@ struct ACrewMember: View {
             TextField("Emergency Contact Name",text: $crewMember.EmergencyContactName).disableAutocorrection(true)
             TextField("Emergency Phone Number",text: $crewMember.EmergencyPhone).disableAutocorrection(true)
             TextField("Emergency Mail",text: $crewMember.EmergencyMail).disableAutocorrection(true)
-            TextField("Emergency Adress",text: $crewMember.EmergencyAdress).disableAutocorrection(true)
-            PDFThumbnailView(pdfData: crewMember.IdentityPDF,emptyString: "Put Copy of Id here")
+            TextField("Emergency Adress",text: $crewMember.EmergencyAdress).disableAutocorrection(true)}
+           
+            Section("Documents") {
+                DocumentStrip(
+                    documents: $crewMember.documents,
+                    suggestedTitles: [
+                        "ID",
+                        "Passport",
+                        "License",
+                        "Visa",
+                        "Medical",
+                        "Insurance"
+                    ]
+                )
+            }
 
-            Button("Select PDF") {
-                            isFileImporterPresented = true
-                        }
-                        .fileImporter(
-                            isPresented: $isFileImporterPresented,
-                            allowedContentTypes: [.pdf],
-                            allowsMultipleSelection: false
-                        ) { result in
-                            do {
-                                let selectedFile = try result.get().first
-                                if let fileURL = selectedFile {
-                                    crewMember.IdentityPDF = try Data(contentsOf: fileURL)
-                                    //print("PDF loaded successfully")
-                                }
-                            } catch {
-                                print("Error loading PDF: \(error)")
-                            }
-                        }// End of Button ie result
                     }// End of Form
         } //End of body View
 

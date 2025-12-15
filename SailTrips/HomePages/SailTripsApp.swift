@@ -25,6 +25,7 @@ struct SailTripsApp: App {
                                      ChecklistItem.self,
                                      ChecklistHeader.self,
                                      ChecklistSection.self,
+                                     Document.self,
                                      Picture.self,
                                      ToService.self,
                                      MagVar.self,
