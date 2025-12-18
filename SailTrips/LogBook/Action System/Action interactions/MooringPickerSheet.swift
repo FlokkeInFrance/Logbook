@@ -59,15 +59,9 @@ struct MooringPickerSheet: View {
         guard trip != nil else { return }
 
         instances.mooringUsed = selected
-        instances.navStatus = .stopped
-        instances.onCourse = false
-        instances.SOG = 0
-        instances.STW = 0
-        instances.tack = .none
 
-        ActionRegistry.logSimple(
-            selected.displayString,
-            using: runtime.context
-        )
+        let zoneT = instances.currentNavZone.displayString
+        ActionRegistry.logSimple("Boat moored in \(zoneT), \(selected.displayString).", using: runtime.context)
+
     }
 }

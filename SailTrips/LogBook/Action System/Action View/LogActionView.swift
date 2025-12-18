@@ -90,6 +90,14 @@ struct LogActionView: View {
     @State private var showNMEATestSheet = false
     // LogActionView.swift
     @StateObject private var pos = PositionUpdater()
+    // A10
+    @State private var showRelocateSheet = false
+
+    // A10C
+    @State private var showCrewSelectorSheet = false
+    @State private var crewSnapshot: Set<UUID> = []
+    @State private var crewDraft: [CrewMember] = []
+
     
     // MARK: - Init
     
@@ -216,8 +224,8 @@ struct LogActionView: View {
             }
         )
     }
-
-    // MARK: - Body
+    //***************************
+    // MARK: - Body             *
     //***************************
     
     var body: some View {
@@ -318,10 +326,25 @@ struct LogActionView: View {
                 )
             }
         }
+        .sheet(isPresented: $showRelocateSheet, onDismiss: {
+            rederiveSituation()
+        }) {
+            RelocateBoatSheet(ctx: actionContext)
+        }
+
+        .sheet(isPresented: $showCrewSelectorSheet, onDismiss: {
+            logCrewChangesAfterDismiss()
+            rederiveSituation()
+        }) {
+            NavigationStack {
+                CrewSelectorView(selectedMembers: $crewDraft) // your existing selector :contentReference[oaicite:9]{index=9}
+            }
+        }
+
     }
-    
-    //END OF BODY
-    //**************************************T
+    //**************************************
+    //END OF BODY                          *
+    //**************************************
     
     private func runAction(_ variant: ActionVariant) {
 
@@ -346,10 +369,12 @@ struct LogActionView: View {
         
         if variant.tag == "A8X" {
             let rt = ActionRuntime(context: actionContext, variant: variant)
+            variant.handler(rt)
             mooringRuntime = rt
             showMooringPicker = true
             return
         }
+
 
         if variant.tag == "AF15x" {
             showNMEATestSheet = true
@@ -382,6 +407,24 @@ struct LogActionView: View {
             showTankInventorySheet = true
             return
         }
+        if variant.tag == "A10" {
+            showRelocateSheet = true
+            return
+        }
+
+        if variant.tag == "A10C" {
+            guard let trip = instances.currentTrip else {
+                showBanner("No active trip.")
+                return
+            }
+            // snapshot current crew
+            crewSnapshot = Set(trip.crew.map(\.id))
+            crewDraft = trip.crew
+            showCrewSelectorSheet = true
+            return
+        }
+
+        // A10P is handled directly by registry handler -> no special casing needed
 
         
         let rt = ActionRuntime(context: actionContext, variant: variant)
@@ -522,6 +565,51 @@ struct LogActionView: View {
         // fallback cleanup
         tankSheetOriginTag = nil
         tankSnapshot = [:]
+    }
+    
+    //log crew changes in the trip table
+    private func logCrewChangesAfterDismiss() {
+        guard let trip = instances.currentTrip else { return }
+
+        let newIDs = Set(crewDraft.map(\.id))
+        let addedIDs = newIDs.subtracting(crewSnapshot)
+        let removedIDs = crewSnapshot.subtracting(newIDs)
+
+        // Apply the crew change to the Trip so TripCompanion reflects it
+        trip.crew = crewDraft
+
+        func names(for ids: Set<UUID>) -> String {
+            let members = crewDraft.filter { ids.contains($0.id) }
+            return members.map { "\($0.FirstName) \($0.LastName)" }
+                .joined(separator: ", ")
+        }
+
+        // For removed, we need the old list too:
+        let oldMembers = trip.crew.filter { crewSnapshot.contains($0.id) } // after assignment this is same,
+        // so instead fetch from snapshot using modelContext if you prefer.
+        // Quick + safe v1: build removed names by looking up in all crew (best effort):
+        let allCrew = (try? modelContext.fetch(FetchDescriptor<CrewMember>())) ?? []
+        let removedNames = allCrew.filter { removedIDs.contains($0.id) }
+            .map { "\($0.FirstName) \($0.LastName)" }
+            .joined(separator: ", ")
+
+        var parts: [String] = []
+
+        if !addedIDs.isEmpty {
+            let addedNames = names(for: addedIDs)
+            parts.append("person \(addedNames) were added to crew")
+        }
+        if !removedIDs.isEmpty {
+            let rn = removedNames.isEmpty ? "unknown" : removedNames
+            parts.append("person \(rn) left the boat today")
+        }
+
+        guard !parts.isEmpty else { return } // no changes => no log
+        ActionRegistry.logSimple(parts.joined(separator: ", "), using: actionContext)
+
+        // cleanup
+        crewSnapshot = []
+        crewDraft = []
     }
 
 

@@ -93,7 +93,7 @@ struct SettingsView: View {
                             set: { settings[0].defaultMooringType = $0 }
                         )
                         
-                        Picker("Default mooring for A8M", selection: bDefaultMooring) {
+                        Picker("Default mooring in area", selection: bDefaultMooring) {
                             ForEach(MooringType.allCases) { t in
                                 Text(t.displayString).tag(t)
                             }

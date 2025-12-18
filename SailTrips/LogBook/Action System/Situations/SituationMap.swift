@@ -95,7 +95,7 @@ extension ActionRegistry {
                 "A11H", "A11A", "A11B", // Leave zone (one of those)
                 "A9",                   // Tank fuel, didn't necessarily logged stopping
                 "A3", "A5", "A4", "A6", // Motor regime
-                "A10",                  // Relocate without leaving, didn't necessarily logged stopping
+                "A10","A10C","A10P",                  // Relocate without leaving, didn't necessarily logged stopping
                 "A8M", "A8A","A8X"            // Stop boat
             ]
         ),
@@ -374,7 +374,7 @@ extension ActionRegistry {
                     "A7M", "A7A",            // Cast off (moored or anchored)
                     "A3", "A5", "A4", "A6",  // Motor regime
                     "A9",                    // Tank fuel
-                    "A10",                   // Relocate boat
+                    "A10","A10C","A10P",     // Relocate boat
                     "A1R"                    // Finish trip
                 ]
             ),

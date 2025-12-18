@@ -703,15 +703,12 @@ extension ActionRegistry {
                 // Trip is "interrupted" while safely moored mid-trip
                 trip.tripStatus = .interrupted
                 instances.navStatus = .stopped
-
-
-
                 instances.onCourse = false
                 instances.SOG = 0.0
                 instances.STW = 0.0
                 instances.tack = .none
 
-                //ActionRegistry.logSimple("Boat moored in \(instances.currentNavZone.rawValue).", using: rt.context)
+                //selection of mooring type and log text will be done by sheet from logactionview
             }
         )
 
@@ -757,21 +754,48 @@ extension ActionRegistry {
             }
         )
 
+        // MARK: - Stops / harbour actions A10.. (relocate, crew change, provisions)
+
         reg.add(
             "A10",
-            title: "Relocated boat",
+            title: "relocate boat",
             group: .navigation,
-            systemImage: "location.viewfinder",
+            systemImage: "mappin.and.ellipse",
             isVisible: { rt in
-                rt.instances.currentNavZone == NavZone.harbour }, // when in harbour
-            handler: { rt in
-                // TODO:
-                // - ask for new position (OP)
-                // - set current location to OP
-                // - optionally let user define a new position for instance "visitor's dock"
-                // - log position text like "now at visitor's dock"
+                // You can tighten this rule later; for now: only when stopped and trip active
+                rt.instances.currentTrip != nil && rt.instances.navStatus == .stopped
+            },
+            handler: { _ in
+                // UI-driven from LogActionView (sheet)
             }
         )
+
+        reg.add(
+            "A10C",
+            title: "crew change",
+            group: .navigation,
+            systemImage: "person.2",
+            isVisible: { rt in
+                rt.instances.currentTrip != nil && rt.instances.navStatus == .stopped
+            },
+            handler: { _ in
+                // UI-driven from LogActionView (crew selector)
+            }
+        )
+
+        reg.add(
+            "A10P",
+            title: "provisions",
+            group: .navigation,
+            systemImage: "cart",
+            isVisible: { rt in
+                rt.instances.currentTrip != nil && rt.instances.navStatus == .stopped
+            },
+            handler: { rt in
+                ActionRegistry.logSimple("Provisions were made during our stop.", using: rt.context)
+            }
+        )
+
 
         // MARK: - Zone enter/leave A11*
         /*let A11HR_InHarbourHandler: ActionHandler = { runtime in
@@ -783,15 +807,20 @@ extension ActionRegistry {
                 title: "Left harbour",
                 group: .navigation,
                 impliesCourseChange: true,
+                systemImage: "square.and.arrow.up",
                 isVisible: { rt in
-            isUnderway(rt) && rt.instances.currentNavZone == .harbour
+                   isUnderway(rt) && rt.instances.currentNavZone == .harbour
         }, handler: { rt in
             // Leaving harbour -> coastal zone, keep propulsion/navStatus as-is
             rt.instances.currentNavZone = .coastal
             ActionRegistry.logSimple("Left harbour, now in coastal waters.", using: rt.context)
         })
 
-        reg.add("A11HR", title: "In harbour",      group: .navigation, isVisible: { rt in
+        reg.add("A11HR",
+                title: "In harbour",
+                group: .navigation,
+                systemImage: "square.and.arrow.down",
+                isVisible: { rt in
             // Used mainly from approach (S6/S6s) to enter harbour
             isUnderway(rt) && rt.instances.currentNavZone == .approach
         }, handler: { rt in
@@ -804,6 +833,7 @@ extension ActionRegistry {
                 title: "Left anchorage",
                 group: .navigation,
                 impliesCourseChange: true,
+                systemImage: "square.and.arrow.up",
                 isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .anchorage
         }, handler: { rt in
@@ -811,7 +841,11 @@ extension ActionRegistry {
             ActionRegistry.logSimple("Left anchorage, now in coastal waters.", using: rt.context)
         })
 
-        reg.add("A11AR", title: "In anchorage",    group: .navigation, isVisible: { rt in
+        reg.add("A11AR",
+                title: "In anchorage",
+                group: .navigation,
+                systemImage: "square.and.arrow.down",
+                isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .approach
         }, handler: { rt in
             rt.instances.currentNavZone = .anchorage
@@ -823,6 +857,7 @@ extension ActionRegistry {
                 title: "Left buoy field",
                 group: .navigation,
                 impliesCourseChange: true,
+                systemImage: "square.and.arrow.up",
                 isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .buoyField
         }, handler: { rt in
@@ -830,7 +865,11 @@ extension ActionRegistry {
             ActionRegistry.logSimple("Left buoy field, now in coastal waters.", using: rt.context)
         })
 
-        reg.add("A11BR", title: "In buoy field",    group: .navigation, isVisible: { rt in
+        reg.add("A11BR",
+                title: "In buoy field",
+                group: .navigation,
+                systemImage: "square.and.arrow.down",
+                isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .approach
         }, handler: { rt in
             rt.instances.currentNavZone = .buoyField
@@ -1474,7 +1513,7 @@ extension ActionRegistry {
 
         reg.add(
             "A39",
-            title: "Tack",
+            title: "Tacked",
             group: .environment,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
@@ -1507,7 +1546,7 @@ extension ActionRegistry {
 
         reg.add(
             "A40",
-            title: "Gybe",
+            title: "Gybed",
             group: .environment,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
@@ -1518,7 +1557,7 @@ extension ActionRegistry {
 
         reg.add(
             "A43",
-            title: "Fall off",
+            title: "Fell off",
             group: .environment,
             impliesCourseChange: true,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
@@ -1529,7 +1568,7 @@ extension ActionRegistry {
 
         reg.add(
             "A44",
-            title: "Luff",
+            title: "Luffed",
             group: .environment,
             impliesCourseChange: true,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
@@ -1540,7 +1579,7 @@ extension ActionRegistry {
 
         reg.add(
             "A41",
-            title: "Flatten sails",
+            title: "Flattened sails",
             group: .environment,
             isVisible: {rt in propulsionIsSailOrMotorsail(rt)},
             handler: {rt in
@@ -1551,7 +1590,7 @@ extension ActionRegistry {
                 
         reg.add(
             "A42",
-            title: "Curve sails",
+            title: "Curved sails",
             group: .environment,
             isVisible: {rt in propulsionIsSailOrMotorsail(rt)},
             handler: {rt in
@@ -1715,7 +1754,7 @@ extension ActionRegistry {
 
         reg.add(
             "AF2",
-            title: "Start engine",
+            title: "Started engine",
             group: .motor,
             systemImage: "engine.combustion",
             isVisible: { rt in hasSingleInboardMotorStopped(rt) && !hasSeveralMotors(rt) },
@@ -1738,7 +1777,7 @@ extension ActionRegistry {
 
         reg.add(
             "AF2R",
-            title: "Stop motor",
+            title: "Stopped motor",
             group: .motor,
             systemImage: "engine.combustion.slash",
             isEmphasised: true,

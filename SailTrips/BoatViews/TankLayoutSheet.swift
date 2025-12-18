@@ -83,7 +83,8 @@ struct TankLayoutSheet: View {
                         }
                     }
                 }
-            }
+            }// End of List
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Tank layout")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -96,6 +97,7 @@ struct TankLayoutSheet: View {
                     }
                 }
             }
+            
         }
     }
     private func defaultTankName(for kind: TankTypes) -> String {

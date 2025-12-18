@@ -50,6 +50,7 @@ struct SailingGeometrySheet: View {
                 }
                 headingSection
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Sailing data")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
