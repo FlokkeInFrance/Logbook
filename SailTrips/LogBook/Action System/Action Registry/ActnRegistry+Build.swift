@@ -363,7 +363,7 @@ extension ActionRegistry {
 
         reg.add(
             "A1R",
-            title: "Finish trip",
+            title: "End trip",
             group: .navigation,
             systemImage: "stop.fill",
             isVisible: { rt in
@@ -500,7 +500,7 @@ extension ActionRegistry {
 
         reg.add( // Done
             "A3",
-            title: "Engine idle",
+            title: "To idle",
             group: .motor,
             systemImage: "gauge.low",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
@@ -518,7 +518,7 @@ extension ActionRegistry {
 
         reg.add( // Done
             "A4",
-            title: "Engine cruise",
+            title: "To cruise",
             group: .motor,
             systemImage: "gauge",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
@@ -536,7 +536,7 @@ extension ActionRegistry {
 
         reg.add( // Done
             "A5",
-            title: "Engine slow",
+            title: "To slow",
             group: .motor,
             systemImage: "gauge.medium",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
@@ -554,7 +554,7 @@ extension ActionRegistry {
 
         reg.add(
             "A6",
-            title: "Engine full",
+            title: "To full",
             group: .motor,
             systemImage: "gauge.high",
             isVisible: { rt in hasSingleInboardMotorRunning(rt) },
@@ -575,7 +575,7 @@ extension ActionRegistry {
 
         reg.add(
             "A7M",
-            title: "Cast off (moored)",
+            title: "Casted off",
             group: .navigation,
             systemImage: "figure.walk",
             isVisible: { rt in
@@ -606,7 +606,7 @@ extension ActionRegistry {
 
         reg.add(
             "A7A",
-            title: "Raise anchor",
+            title: "anchor raised",
             group: .navigation,
             systemImage: "anchor",
             isVisible: { rt in
@@ -636,7 +636,55 @@ extension ActionRegistry {
 
         reg.add(
             "A8M",
-            title: "Moor boat",
+            title: "boat moored",
+            group: .navigation,
+            systemImage: "dock.rectangle",
+            isVisible: { rt in
+                // When moving, in harbour or buoy field
+                !isBoatStopped(rt) && (rt.instances.currentNavZone == NavZone.harbour || rt.instances.currentNavZone == NavZone.buoyField)
+
+            },
+            handler: { rt in
+                guard let trip = rt.instances.currentTrip else {
+                    rt.showBanner("No active trip.")
+                    return
+                }
+
+                let instances = rt.instances
+                let settings = rt.context.currentSettings()
+                let defaultMooring = settings.defaultMooringType
+
+
+                // Trip is "interrupted" while safely moored mid-trip
+                trip.tripStatus = .interrupted
+                instances.navStatus = .stopped
+
+                // Default mooring type depending on zone
+                switch instances.currentNavZone {
+                case .harbour:
+                    instances.mooringUsed = rt.context.currentSettings().defaultMooringType
+                case .buoyField:
+                    instances.mooringUsed = .mooringBall
+                default:
+                    instances.mooringUsed = rt.context.currentSettings().defaultMooringType
+
+
+                }
+
+                instances.onCourse = false
+                instances.SOG = 0.0
+                instances.STW = 0.0
+                instances.tack = .none
+                let mooringT = defaultMooring.displayString
+                let zoneT = instances.currentNavZone.displayString
+
+                ActionRegistry.logSimple("Boat moored in \(zoneT), \(mooringT).", using: rt.context)
+            }
+        )
+        
+        reg.add(
+            "A8X",
+            title: "moored how",
             group: .navigation,
             systemImage: "dock.rectangle",
             isVisible: { rt in
@@ -656,27 +704,20 @@ extension ActionRegistry {
                 trip.tripStatus = .interrupted
                 instances.navStatus = .stopped
 
-                // Default mooring type depending on zone
-                switch instances.currentNavZone {
-                case .harbour:
-                    instances.mooringUsed = .mooredOnShore
-                case .buoyField:
-                    instances.mooringUsed = .mooringBall
-                default:
-                    instances.mooringUsed = .mooredOnShore
-                }
+
 
                 instances.onCourse = false
                 instances.SOG = 0.0
                 instances.STW = 0.0
+                instances.tack = .none
 
-                ActionRegistry.logSimple("Boat moored in \(instances.currentNavZone.rawValue).", using: rt.context)
+                //ActionRegistry.logSimple("Boat moored in \(instances.currentNavZone.rawValue).", using: rt.context)
             }
         )
 
         reg.add(
             "A8A",
-            title: "Drop anchor",
+            title: "anchor set",
             group: .navigation,
             systemImage: "anchor.circle",
             isVisible: { rt in
@@ -704,23 +745,21 @@ extension ActionRegistry {
 
         reg.add(
             "A9",
-            title: "Tank fuel",
+            title: "Fuel tanked",
             group: .otherLog,
             systemImage: "fuelpump",
             isVisible: { rt in
                 rt.instances.currentNavZone == NavZone.harbour
+                && !rt.instances.selectedBoat.tankItems(of: .fuel).isEmpty
             },
             handler: { rt in
-                // TODO:
-                // - ask new fuel level (N)
-                // - update instances/boat fuelLevel
-                // - log "Tanked [main fuel], fuel level N%"
+                    //handled by LogActionView
             }
         )
 
         reg.add(
             "A10",
-            title: "Relocate boat",
+            title: "Relocated boat",
             group: .navigation,
             systemImage: "location.viewfinder",
             isVisible: { rt in
@@ -740,7 +779,11 @@ extension ActionRegistry {
         
         // MARK: - Harbour / anchorage / buoy field A11x
 
-        reg.add("A11H",  title: "Leave harbour",   group: .navigation, isVisible: { rt in
+        reg.add("A11H",
+                title: "Left harbour",
+                group: .navigation,
+                impliesCourseChange: true,
+                isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .harbour
         }, handler: { rt in
             // Leaving harbour -> coastal zone, keep propulsion/navStatus as-is
@@ -757,7 +800,11 @@ extension ActionRegistry {
             ActionRegistry.logSimple("Entered harbour.", using: rt.context)
         })
 
-        reg.add("A11A",  title: "Leave anchorage", group: .navigation, isVisible: { rt in
+        reg.add("A11A",
+                title: "Left anchorage",
+                group: .navigation,
+                impliesCourseChange: true,
+                isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .anchorage
         }, handler: { rt in
             rt.instances.currentNavZone = .coastal
@@ -772,7 +819,11 @@ extension ActionRegistry {
             ActionRegistry.logSimple("Arrived in anchorage.", using: rt.context)
         })
 
-        reg.add("A11B",  title: "Leave buoy field", group: .navigation, isVisible: { rt in
+        reg.add("A11B",
+                title: "Left buoy field",
+                group: .navigation,
+                impliesCourseChange: true,
+                isVisible: { rt in
             isUnderway(rt) && rt.instances.currentNavZone == .buoyField
         }, handler: { rt in
             rt.instances.currentNavZone = .coastal
@@ -886,6 +937,7 @@ extension ActionRegistry {
             "A20",
             title: "Back on track",
             group: .navigation,
+            impliesCourseChange: true,
             isVisible: { rt in
                 isUnderway(rt) && !rt.instances.onCourse
             },
@@ -893,18 +945,19 @@ extension ActionRegistry {
                 rt.instances.onCourse = true
                 rt.instances.navStatus = .underway
                 rt.instances.currentTrip?.tripStatus = .underway
-                //ActionRegistry.logSimple("Back on planned track.", using: rt.context)
+                ActionRegistry.logSimple("Back on planned track.", using: rt.context)
             }
         )
 
         reg.add(
             "A21",
-            title: "Req deviation",
+            title: "deviation rqw",
             group: .navigation,
+            impliesCourseChange: true,
             isVisible: { rt in isUnderway(rt) },
             handler: { rt in
                 rt.instances.onCourse = false
-                //ActionRegistry.logSimple("Route deviation required.", using: rt.context)
+                ActionRegistry.logSimple("Route deviation required.", using: rt.context)
             }
         )
 
@@ -922,8 +975,9 @@ extension ActionRegistry {
 
         reg.add(
             "A23",
-            title: "Change course",
+            title: "Course changed",
             group: .navigation,
+            impliesCourseChange: true,
             isVisible: { rt in isUnderway(rt) },
             handler: { rt in
                 //ActionRegistry.logSimple("Course change ordered.", using: rt.context)
@@ -1039,6 +1093,7 @@ extension ActionRegistry {
                     return boat.sails.contains { $0.currentState.isSet }
                 },
                 handler: { rt in
+                    rt.instances.tack = .none
                     let boat = rt.instances.selectedBoat
                     var changed = false
 
@@ -1130,7 +1185,10 @@ extension ActionRegistry {
                     var action = "down"
                     if (head.reducedWithFurling) {action = "fully furled"}
                     let nhead = boat.headsail?.nameOfSail
-            finishSailChange(rt, logText: "\(nhead ?? "jib") \(action)")
+                    finishSailChange(rt, logText: "\(nhead ?? "jib") \(action)")
+                    if !sailsAreDriving(rt.instances.selectedBoat) {
+                        rt.instances.tack = .none
+                    }
                 })
 
         reg.add("A30",
@@ -1167,6 +1225,9 @@ extension ActionRegistry {
                     var action = "lowered"
                     if main.reducedWithFurling { action = "furled" }
                     finishSailChange(rt, logText: "\(nmain) \(action).")
+                    if !sailsAreDriving(rt.instances.selectedBoat) {
+                        rt.instances.tack = .none
+                    }
                 })
 
         reg.add("A31",
@@ -1411,8 +1472,6 @@ extension ActionRegistry {
 
         // MARK: - AWA / shape / storm tactics A39..A48
 
-        // MARK: - AWA / shape / storm tactics A39..A48
-
         reg.add(
             "A39",
             title: "Tack",
@@ -1461,6 +1520,7 @@ extension ActionRegistry {
             "A43",
             title: "Fall off",
             group: .environment,
+            impliesCourseChange: true,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
                 //ActionRegistry.logSimple("Falling off from the wind.", using: rt.context)
@@ -1471,6 +1531,7 @@ extension ActionRegistry {
             "A44",
             title: "Luff",
             group: .environment,
+            impliesCourseChange: true,
             isVisible: { rt in propulsionIsSailOrMotorsail(rt) },
             handler: { rt in
                 //ActionRegistry.logSimple("Luffing up towards the wind.", using: rt.context)
@@ -1746,7 +1807,7 @@ extension ActionRegistry {
             group: .incident,
             systemImage: "exclamationmark.bubble",
             handler: { rt in
-                // TODO: open Problem Reporter; that view makes the log
+                // Sheet-driven: presented from LogActionView
             }
         )
 
@@ -1754,9 +1815,9 @@ extension ActionRegistry {
             "AF5",
             title: "Manual log",
             group: .otherLog,
-            systemImage: "book.and.pen",
+            systemImage: "long.text.page.and.pencil",
             handler: { rt in
-                // TODO: open manual log view; user makes the log entry
+                // Sheet-driven: presented from LogActionView
             }
         )
 
@@ -1766,7 +1827,7 @@ extension ActionRegistry {
             group: .otherLog,
             systemImage: "slider.horizontal.3",
             handler: { rt in
-                // TODO: open instances manager; manager makes logs as needed
+                // Sheet-driven: presented from LogActionView
             }
         )
 
@@ -1821,7 +1882,7 @@ extension ActionRegistry {
                 // TODO: open WPT definition sheet; log "Aim for waypoint: name"
             }
         )
-
+// AF12 is useless since the navigation system allows to go back with the top arrow
         /*reg.add(
             "AF12",
             title: "Back to trip",
@@ -1872,6 +1933,7 @@ extension ActionRegistry {
             "AF16",
             title: "Goto next WPT",
             group: .navigation,
+            impliesCourseChange: true,
             systemImage: "arrowshape.turn.up.right",
             handler: { rt in
                 // TODO: if WPT list defined:
@@ -1899,14 +1961,16 @@ extension ActionRegistry {
         reg.add(
             "AF18",
             title: "Levels",
-            group: .motor,
-            systemImage: "",
+            group: .otherLog,
+            systemImage: "drop.fill",
             isEmphasised: false,
-            isVisible: { rt in !rt.instances.selectedBoat.extraRiggingItems.isEmpty},
-            handler: { rt in
-                // TODO: if boat.extraRigs not empty, show list of checkboxes, update rigsUsed
-                // log "Rig added: [rigUsed]"
-            })
+            isVisible: { rt in
+                !rt.instances.selectedBoat.tankItems.isEmpty
+            },
+            handler: { _ in
+                // Sheet-driven: presented from LogActionView
+            }
+        )
 
         // MARK: - EM emergency management (all require emergencyState == true)
 

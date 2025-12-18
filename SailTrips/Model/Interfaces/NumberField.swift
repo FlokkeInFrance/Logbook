@@ -88,28 +88,56 @@ struct NumberField: View {
 }
 
 struct IntField: View {
-    
-    let myIntFormat: NumberFormatter = {
-        let nf = NumberFormatter()
-        nf.numberStyle = .none
-        nf.locale = Locale.current
-        nf.groupingSize = 0
-        return nf
-    }()
-    
     let label: String
     @Binding var inData: Int
-    
+
+    @State private var text: String = ""
+    @FocusState private var isFocused: Bool
+
     var body: some View {
-        LabeledContent {TextField(label, value: $inData, formatter: myIntFormat)
-                .keyboardType(.numberPad) // Clavier numérique avec point décimal
+        LabeledContent {
+            TextField(label, text: $text)
+                .keyboardType(.numberPad)
+                .focused($isFocused)
                 .textFieldStyle(RoundedBorderTextFieldStyle())
                 .padding(2)
-        } label: {Text(label)}
-        
+                .onAppear {
+                    // Your convention: 0 means "unknown" -> show empty
+                    text = (inData == 0) ? "" : String(inData)
+                }
+                .onChange(of: isFocused) { _, focused in
+                    // When user starts editing, clear the visual "0"
+                    if focused && (text == "0") {
+                        text = ""
+                    }
+                }
+                .onChange(of: text) { _, newValue in
+                    let digitsOnly = newValue.filter(\.isNumber)
+
+                    // Strip leading zeros (but keep a single "0" if that's all)
+                    let trimmed = digitsOnly.drop(while: { $0 == "0" })
+                    let normalized = trimmed.isEmpty ? (digitsOnly.isEmpty ? "" : "0") : String(trimmed)
+
+                    if normalized != newValue {
+                        text = normalized
+                        return
+                    }
+
+                    // Write back to model: empty => 0 (unknown)
+                    inData = Int(normalized) ?? 0
+                }
+                .onChange(of: inData) { _, newValue in
+                    // If model changes externally, keep text consistent
+                    if !isFocused {
+                        text = (newValue == 0) ? "" : String(newValue)
+                    }
+                }
+        } label: {
+            Text(label)
+        }
     }
-    
 }
+
 
 struct BearingView: View {
     let label:String

@@ -7,12 +7,6 @@
 
 // ActionRegistry.swift
 // Central registry for all logbook actions + situation layouts
-
-//
-//  ActionRegistry.swift
-//  SailTrips
-//
-//  Created by ChatGPT on 25/11/2025.
 //
 
 import Foundation
@@ -21,6 +15,7 @@ import SwiftUI
 /// Central registry of all Log actions + where they appear.
 /// For v1 this is hard-coded but structured so you can easily extend it.
 struct ActionRegistry {
+
     private var variants: [String: ActionVariant] = [:]
 
     init(variants: [String: ActionVariant] = [:]) {
@@ -37,6 +32,7 @@ struct ActionRegistry {
             _ tag: String,
             title: LocalizedStringKey,
             group: ActionGroup = .generic,
+            impliesCourseChange: Bool = false,
             systemImage: String? = nil,
             isEmphasised: Bool = false,
             isVisible: @escaping ActionVisibilityPredicate = { _ in true },
@@ -47,10 +43,12 @@ struct ActionRegistry {
                 title: title,
                 systemImage: systemImage,
                 group: group,
+                impliesCourseChange: impliesCourseChange,   // ✅ correct
                 isEmphasised: isEmphasised,
                 isVisible: isVisible,
                 handler: handler
             )
+
             variants[tag] = variant
             return self
         }
@@ -76,7 +74,10 @@ struct ActionRegistry {
 extension ActionRegistry {
 
     static func logSimple(_ text: String, using ctx: ActionContext) {
-        ActionLogPipeline.logNow(headerText: text, using: ctx)
+        ActionLogPipeline.logNow(headerText: text, using: ctx, variant: nil)
+    }
+
+    static func logAction(_ runtime: ActionRuntime, _ text: String) {
+        ActionLogPipeline.logNow(headerText: text, using: runtime.context, variant: runtime.variant)
     }
 }
-

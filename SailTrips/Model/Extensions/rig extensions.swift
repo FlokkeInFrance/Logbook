@@ -20,7 +20,6 @@ extension ExtraRigging {
         case .lifelines: "Additional lifelines / jacklines"
         case .bowsprit: "Bowsprit"
         case .removableForestay: "Removable forestay / inner stay"
-        case .boom: "Second boom / spare boom"
         case .other: "Other (custom item)"
         }
     }

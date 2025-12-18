@@ -121,7 +121,7 @@ struct CruiseListView: View {
                     if selectCruiseOnStatus {
                         Picker("Status", selection: $selectedStatus) {
                             ForEach(CruiseStatus.allCases) { status in
-                                Text(status.label).tag(status)
+                                Text(status.displayString).tag(status)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -144,7 +144,7 @@ struct CruiseListView: View {
                                         cruise.DateOfStart,
                                         format: Date.FormatStyle(date: .numeric, time: .omitted)
                                     )
-                                    Text("(\(cruise.CruiseType.label))")
+                                    Text("(\(cruise.CruiseType.displayString))")
                                 }
                                 Text("\(cruise.Title)")
                             }

@@ -29,14 +29,16 @@ enum ActionLogPipeline {
         let lon: Double
     }
 
-    static func logNow(headerText: String, using ctx: ActionContext) {
+    static func logNow(headerText: String, using ctx: ActionContext, variant: ActionVariant? = nil) {
         Task { @MainActor in
-            await logNowAsync(headerText: headerText, using: ctx)
+            await logNowAsync(headerText: headerText, using: ctx, variant: variant)
         }
     }
 
+
     @MainActor
-    private static func logNowAsync(headerText: String, using ctx: ActionContext) async {
+    private static func logNowAsync(headerText: String, using ctx: ActionContext, variant: ActionVariant?) async {
+
         guard let trip = ctx.instances.currentTrip else {
             ctx.showBanner("No active Trip – action not logged.")
             return
@@ -78,6 +80,35 @@ enum ActionLogPipeline {
             instances: ctx.instances,
             nmea: ctx.nmeaSnapshot()
         )
+        // --- Sailing geometry sanity policy (AWA noise after strategic actions) ---
+        if let variant,
+           variant.impliesCourseChange == false
+        {
+            let prevAWA = last?.AWA ?? ctx.instances.AWA
+            let nowAWA = fix.awaDeg ?? ctx.instances.AWA
+
+            let prevAbs = abs(prevAWA)
+            let nowAbs = abs(nowAWA)
+            let deltaAbs = abs(nowAbs - prevAbs)
+
+            // “7° rule” is *ignored as a trigger* here; only act if it’s really big.
+            // Heuristic: big enough to likely indicate intent mismatch.
+            if deltaAbs >= 25 {
+                let shouldReview = await ctx.confirm(
+                    title: "Confirm sailing geometry",
+                    message: "After \(variant.title), measured AWA changed from \(prevAbs)° to \(nowAbs)°.\nDo you want to review heading / point of sail?"
+                )
+
+                if shouldReview {
+                    // We do NOT mutate Instances here; we just trigger the review flow.
+                    // The SailingGeometrySheet will apply + log the geometry changes.
+                    ctx.openSailingGeometrySheet(variant)
+                    ctx.showBanner("Review sailing geometry.")
+                    // You will wire this in LogActionView: present SailingGeometrySheet(runtime:)
+                    // for tags that support it (A39/A40 etc).
+                }
+            }
+        }
 
 
         // 7) COG vs bearing (magHeading) tier logic + prompt if needed

@@ -13,12 +13,33 @@ enum SpeedUnit: String, Codable, CaseIterable, Sendable {
 }
 enum SizeUnit: String, Codable, CaseIterable, Sendable {
   case meters, feet
+    var shortLabel: String {
+        switch self {
+        case .meters:  return "m"
+        case .feet:    return "ft"
+            
+        }
+    }
 }
 enum WeightUnit: String, Codable, CaseIterable, Sendable {
   case kilo, pound
+    var shortLabel: String {
+        switch self {
+        case .kilo:    return "kg"
+        case .pound: return "lb"
+            
+        }
+    }
 }
 enum VolumeUnit: String, Codable, CaseIterable, Sendable {
-  case liters, gallons
+  case liters, gallonsUS, gallonsUK
+    var shortLabel: String {
+        switch self {
+        case .liters:   return "L"
+        case .gallonsUS:return "gal"
+        case .gallonsUK:return "gal"
+        }
+    }
 }
 enum PressureUnit: String, Codable, CaseIterable, Sendable {
   case mmHg, inchHg, mbar, hPa

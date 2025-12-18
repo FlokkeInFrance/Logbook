@@ -96,7 +96,7 @@ extension ActionRegistry {
                 "A9",                   // Tank fuel, didn't necessarily logged stopping
                 "A3", "A5", "A4", "A6", // Motor regime
                 "A10",                  // Relocate without leaving, didn't necessarily logged stopping
-                "A8M", "A8A"            // Stop boat (mutually exclusive)
+                "A8M", "A8A","A8X"            // Stop boat
             ]
         ),
         

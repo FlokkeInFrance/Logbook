@@ -40,6 +40,10 @@ struct TripCompanionView: View {
     @State private var showStartSelector = false
     @State private var showDestinationSelector = false
     @State private var showWeatherDesciption: Bool = false
+
+    @State private var showTankLevels = false
+    @State private var showTankLayout = false
+
     
 
     // Calendar and clamped dates
@@ -64,7 +68,8 @@ struct TripCompanionView: View {
         
         Button("View Current Logbook") {
             active.selectedTripID = instances.currentTrip?.id
-            navPath.path.append(HomePageNavigation.logView)
+            navPath.path.append(HomePageNavigation.logView(tripID: instances.currentTrip?.id))
+
         }
         
         
@@ -303,26 +308,92 @@ struct TripCompanionView: View {
                 
                 // Inventory & NMEA
                 GroupBox(label: Text("Inventory").font(.headline)) {
-                    NumberField(label: "Motor Hours", inData: $instances.motorHours, inString: myFormat.string(for: instances.motorHours) ?? "" )
-                    Text("%Water level:")
-                    Slider(value: Binding(
-                        get: { Double(instances.waterLevel) },
-                        set: { instances.waterLevel = Int($0) }
-                    ), in: 0...100) { Text("Water %") }
-                    Text("%Fuel level:")
-                    Slider(value: Binding(
-                        get: { Double(instances.fuelLevel) },
-                        set: { instances.fuelLevel = Int($0) }
-                    ), in: 0...100) { Text("Fuel %") }
-                    Text("%Battery level:")
-                    Slider(value: Binding(
-                        get: { Double(instances.batteryLevel) },
-                        set: { instances.batteryLevel = Int($0) }
-                    ), in: 0...100) { Text("Battery %") }
+                    NumberField(
+                        label: "Motor Hours",
+                        inData: $instances.motorHours,
+                        inString: myFormat.string(for: instances.motorHours) ?? ""
+                    )
+
+                    let tanks = instances.selectedBoat.tankItems
+
+                    if tanks.isEmpty {
+                        // Fallback: old UI until layout is defined
+                        Text("%Water level:")
+                        Slider(value: Binding(
+                            get: { Double(instances.waterLevel) },
+                            set: { instances.waterLevel = Int($0) }
+                        ), in: 0...100)
+
+                        Text("%Fuel level:")
+                        Slider(value: Binding(
+                            get: { Double(instances.fuelLevel) },
+                            set: { instances.fuelLevel = Int($0) }
+                        ), in: 0...100)
+
+                        Text("%Battery level:")
+                        Slider(value: Binding(
+                            get: { Double(instances.batteryLevel) },
+                            set: { instances.batteryLevel = Int($0) }
+                        ), in: 0...100)
+
+                        Button("Define tank layout…") { showTankLayout = true }
+                            .padding(.top, 6)
+
+                    } else {
+                        // New UI: grouped tanks with a "dial" + computed amount
+                        ForEach(TankTypes.allCases) { kind in
+                            let list = instances.selectedBoat.tankItems(of: kind)
+                            if !list.isEmpty {
+                                Divider().padding(.vertical, 4)
+                                Text(kind.title)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.secondary)
+
+                                ForEach(list, id: \.id) { tank in
+                                    HStack(spacing: 12) {
+                                        Gauge(value: Double(tank.percentFull), in: 0...100) { }
+                                            .gaugeStyle(.accessoryCircularCapacity)
+                                            .frame(width: 34, height: 34)
+
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(tank.name.isEmpty ? "Unnamed" : tank.name)
+                                            if let amt = tank.amountComputed {
+                                                Text("≈ \(amt) / \(tank.capacity)")
+                                                    .font(.footnote)
+                                                    .foregroundStyle(.secondary)
+                                            } else {
+                                                Text("\(tank.percentFull)%")
+                                                    .font(.footnote)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+
+                                        Spacer()
+                                    }
+                                    .padding(.vertical, 2)
+                                }
+                            }
+                        }
+
+                        HStack {
+                            Button("Set levels…") { showTankLevels = true }
+                            Spacer()
+                            Button("Layout…") { showTankLayout = true }
+                        }
+                        .padding(.top, 6)
+                    }
+
                     Button("Test NMEA") {
-                        // TODO: trigger NMEA test
+                        // TODO
                     }
                 }
+                .sheet(isPresented: $showTankLevels) {
+                    TankInventorySheet(boat: instances.selectedBoat)
+                }
+                .sheet(isPresented: $showTankLayout) {
+                    TankLayoutSheet(boat: instances.selectedBoat)
+                }
+
                 
                 Spacer()
                 

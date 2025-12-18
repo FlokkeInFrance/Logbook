@@ -395,7 +395,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         @Attribute(.unique) private(set) var id: UUID
         var selectedBoat: Boat
         //boat state
-        var fuelLevel : Int = 100 //in %
+        var fuelLevel : Int = 100 //in %, fallback if no tanks are defined
         var waterLevel : Int = 100 //in %
         var batteryLevel : Int = 100 //in %
         var motorHours : Float = 10.0
@@ -411,7 +411,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var startLocationLong : Double = 0.0
         var startLocationLat : Double = 0.0
         //sequence
-        var mooringUsed : MooringType = MooringType.mooredOnShore
+        var mooringUsed : MooringType = MooringType.mooredInBerth
         var navStatus : NavStatus = NavStatus.stopped
         var currentNavZone : NavZone = NavZone.harbour
         var propulsion : PropulsionTool = PropulsionTool.none
@@ -684,7 +684,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var name: String              // “Walder”, “Removable forestay”, “Spare halyard”
         var category: InventoryCategory
         var subcategory: String       // free text or an enum later
-        var type: InventoryType       // “extra rigging”, “safety”, “tools”, …
+        var type: InventoryType       // “extra rigging”, “safety”, “tools”,"tank", ...
 
         var dateOfEntry: Date
         var dateOfReplacement: Date?
@@ -696,6 +696,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         /// Optional link back to your enum for canonical items.
         var extraRiggingKind: ExtraRigging?
         var quantity: Int = 0
+        var capacity: Int = 0
         var brand: String = ""
         var retailer: String = ""
         var checkPeriodicity: Int = 0
@@ -740,6 +741,11 @@ enum CruiseDataSchemaV1: VersionedSchema {
       var weightUnit: WeightUnit = WeightUnit.kilo
       var volumeUnit: VolumeUnit = VolumeUnit.liters
       var pressureUnit: PressureUnit = PressureUnit.hPa
+      var defaultMooringTypeRaw: String = MooringType.mooredInBerth.rawValue
+      var defaultMooringType: MooringType {
+            get { MooringType(rawValue: defaultMooringTypeRaw) ?? .mooredInBerth }
+            set { defaultMooringTypeRaw = newValue.rawValue }
+           }
       var autoReadposition: Bool = true
       var autoUpdatePosition: Bool = false
       var autoUpdatePeriodicity: Int = 60

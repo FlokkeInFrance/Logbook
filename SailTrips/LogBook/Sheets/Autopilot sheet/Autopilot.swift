@@ -41,7 +41,7 @@ struct AutopilotModeSheet: View {
                 Section("Mode") {
                     Picker("Autopilot mode", selection: $selectedMode) {
                         ForEach(selectableModes, id: \.self) { mode in
-                            Text(mode.displayName).tag(mode)
+                            Text(mode.displayString).tag(mode)
                         }
                     }
                     .pickerStyle(.navigationLink)
@@ -93,7 +93,7 @@ struct AutopilotModeSheet: View {
         instances.steering = .autopilot
 
         // Log depending on which action invoked us
-        let modeName = selectedMode.displayName
+        let modeName = selectedMode.displayString
         let dirSuffix = selectedMode.needsDirection ? " (\(newDirection)°)" : ""
 
         if runtime.variant.tag == "A25" {
@@ -152,7 +152,7 @@ struct AutopilotModeSheet2: View {
                 Section("Mode") {
                     Picker("Autopilot mode", selection: $selectedMode) {
                         ForEach(selectableModes, id: \.self) { mode in
-                            Text(mode.displayName).tag(mode)
+                            Text(mode.displayString).tag(mode)
                         }
                     }
                     .pickerStyle(.navigationLink)
@@ -204,7 +204,7 @@ struct AutopilotModeSheet2: View {
         instances.steering = .autopilot
 
         // Log depending on which action invoked us
-        let modeName = selectedMode.displayName
+        let modeName = selectedMode.displayString
         let dirSuffix = selectedMode.needsDirection ? " (\(newDirection)°)" : ""
 
         if runtime.variant.tag == "A25" {

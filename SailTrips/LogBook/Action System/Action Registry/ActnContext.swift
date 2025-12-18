@@ -13,6 +13,16 @@
 import Foundation
 import SwiftData
 
+struct ActionConfirmRequest: Identifiable, Sendable {
+    let id = UUID()
+    
+    let title: String
+    let message: String
+    let confirmTitle: String
+    let cancelTitle: String
+    let completion: @Sendable (Bool) -> Void
+}
+
 struct PositionFix: Sendable {
     enum Source: Sendable { case phone, nmea, continuousStream, unknown }
     var lat: Double
@@ -37,11 +47,13 @@ struct NavSensorsSnapshot: Sendable {
 
 struct ActionContext {
     let instances: Instances
+    let currentSettings: () -> LogbookSettings
     let modelContext: ModelContext
     let showBanner: (String) -> Void
     let openDangerSheet: (ActionVariant) -> Void
     let presentTextPrompt: (ActionTextPromptRequest) -> Void
-
+    let presentConfirm: (ActionConfirmRequest) -> Void
+    let openSailingGeometrySheet: (ActionVariant) -> Void
     let positionUpdater: PositionUpdater?
 
     /// NEW: last known NMEA snapshot
@@ -50,9 +62,12 @@ struct ActionContext {
     init(
         instances: Instances,
         modelContext: ModelContext,
+        currentSettings: @escaping () -> LogbookSettings = { LogbookSettings()},
         showBanner: @escaping (String) -> Void,
         openDangerSheet: @escaping (ActionVariant) -> Void,
         presentTextPrompt: @escaping (ActionTextPromptRequest) -> Void = { _ in },
+        presentConfirm: @escaping (ActionConfirmRequest) -> Void = { _ in },
+        openSailingGeometrySheet: @escaping (ActionVariant) -> Void,
         positionUpdater: PositionUpdater? = nil,
         nmeaSnapshot: @escaping () -> NMEASnapshot? = { nil }
     ) {
@@ -61,11 +76,13 @@ struct ActionContext {
         self.showBanner = showBanner
         self.openDangerSheet = openDangerSheet
         self.presentTextPrompt = presentTextPrompt
+        self.presentConfirm = presentConfirm
         self.positionUpdater = positionUpdater
+        self.openSailingGeometrySheet = openSailingGeometrySheet
         self.nmeaSnapshot = nmeaSnapshot
+        self.currentSettings = currentSettings
     }
 }
-
 
 extension ActionContext {
     /// Shows a generic single-line text prompt and returns the result.
@@ -89,6 +106,27 @@ extension ActionContext {
             }
 
             presentTextPrompt(request)
+        }
+    }
+}
+
+extension ActionContext {
+    func confirm(
+        title: String,
+        message: String,
+        confirmTitle: String = "Review",
+        cancelTitle: String = "Keep"
+    ) async -> Bool {
+        await withCheckedContinuation { continuation in
+            let req = ActionConfirmRequest(
+                title: title,
+                message: message,
+                confirmTitle: confirmTitle,
+                cancelTitle: cancelTitle
+            ) { result in
+                continuation.resume(returning: result)
+            }
+            presentConfirm(req)
         }
     }
 }

@@ -41,6 +41,7 @@ enum LogActionCode: String, CaseIterable {
     case A7A = "A7A"
     case A8M = "A8M"
     case A8A = "A8A"
+    case A8X = "A8X"
     case A9 = "A9"
     case A10 = "A10"
     case A11H = "A11H"
@@ -169,20 +170,23 @@ typealias ActionHandler = (ActionRuntime) -> Void
 struct ActionVariant: Identifiable {
 
     let tag: String
-    let title: LocalizedStringKey /// User-facing label (short, for the button).
-    let systemImage: String? /// Optional SF Symbol name.
-    let group: ActionGroup    /// Visual grouping (Motor, Navigation, Emergency, etc.)
-    let isEmphasised: Bool /// Emphasis for UI (e.g. emergencies, primary actions).
-    let isVisible: ActionVisibilityPredicate/// Whether this action should be shown in the *current* runtime context.
-    let handler: ActionHandler /// What actually happens: instance updates, logs, sheets, etc.
-    
+    let title: LocalizedStringKey
+    let systemImage: String?
+    let group: ActionGroup
+
+    let impliesCourseChange: Bool        // ✅ stored
+    let isEmphasised: Bool
+    let isVisible: ActionVisibilityPredicate
+    let handler: ActionHandler
+
     var id: String { tag }
-    
+
     init(
         tag: String,
         title: LocalizedStringKey,
         systemImage: String? = nil,
         group: ActionGroup = .generic,
+        impliesCourseChange: Bool = false,     // ✅ correct spelling
         isEmphasised: Bool = false,
         isVisible: @escaping ActionVisibilityPredicate = { _ in true },
         handler: @escaping ActionHandler = { _ in }
@@ -191,9 +195,11 @@ struct ActionVariant: Identifiable {
         self.title = title
         self.systemImage = systemImage
         self.group = group
+        self.impliesCourseChange = impliesCourseChange   // ✅ assign
         self.isEmphasised = isEmphasised
         self.isVisible = isVisible
         self.handler = handler
     }
 }
+
 

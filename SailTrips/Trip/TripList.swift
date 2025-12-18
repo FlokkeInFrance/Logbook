@@ -127,7 +127,7 @@ struct TripListView: View {
         ) {
             Button("Show logs") {
                 if let id = selectedTrip?.id {
-                    navPath.path.append(HomePageNavigation.logView)
+                    navPath.path.append(HomePageNavigation.logView(tripID: id))
                 }
             }
             Button("Trip details") {

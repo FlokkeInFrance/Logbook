@@ -137,30 +137,3 @@ struct TripDetailView: View {
     }
 }
 
-#if DEBUG
-/*struct TripDetailView_Previews: PreviewProvider {
-    struct DummyBoat { var name = "TestBoat"; var hasCombustionEngine = true }
-    struct DummyMember { var id = UUID(); var FirstName = "John"; var LastName = "Doe" }
-    static var previews: some View {
-        // Create a test trip
-        let trip = Trip()
-        trip.boat = Boat() // Assume Boat init provides defaults
-        trip.boat?.name = "Sea Queen"
-        trip.boat?.hasCombustionEngine = true
-        trip.dateOfStart = Date()
-        trip.tripStatus = .completed
-        trip.startPlace = Location(name: "Port A", latitude: 0, longitude: 0)
-        trip.destination = Location(name: "Port B", latitude: 0, longitude: 0)
-        trip.comments = "Lovely day"
-        trip.skipper = CrewMember()
-        trip.skipper?.FirstName = "Jane"
-        trip.skipper?.LastName = "Smith"
-        trip.crew = [CrewMember(), CrewMember()]
-
-        return NavigationView {
-            TripDetailView(trip: trip)
-        }
-    }
-}*/
-#endif
-

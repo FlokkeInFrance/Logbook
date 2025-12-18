@@ -67,7 +67,7 @@ struct TripStarter {
         }
 
         if instances.mooringUsed == .none || instances.mooringUsed == .other {
-            instances.mooringUsed = .mooredOnShore
+            instances.mooringUsed = .mooredInBerth
         }
 
         instances.navStatus = .none

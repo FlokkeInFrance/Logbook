@@ -96,6 +96,7 @@ struct LocationDetailView: View {
     @State private var fullImage: UIImage? = nil
     @State private var showFull = false
     @State private var lastDate: Date = Date.distantPast
+    @State private var selectedPhotoIDs: Set<UUID> = []
 
     init(location: Location, context: ModelContext? = nil) {
         _location = State(initialValue: location)
@@ -146,35 +147,13 @@ struct LocationDetailView: View {
             GroupBox(label: Label("Observations", systemImage: "pencil")) {
                 TextEditor(text: $location.observations).frame(height: 100)
             }
-
+            // Photos for the location
             GroupBox(label: Label("Photos", systemImage: "photo")) {
-                ScrollView(.horizontal) {
-                    HStack {
-                        ForEach(location.picture, id: \.id) { pic in
-                            if let ui = UIImage(data: pic.data) {
-                                Image(uiImage: ui)
-                                    .resizable()
-                                    .frame(width: 100, height: 50)
-                                    .onTapGesture(count: 2) {
-                                        fullImage = ui
-                                    }
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            if let idx = location.picture.firstIndex(where: { $0.id == pic.id }) {
-                                                location.picture.remove(at: idx)
-                                            }
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
-                                        }
-                                    }
-                            }
-                        }
-                        Button(action: { showImagePicker = true }) {
-                            Label("Add", systemImage: "plus")
-                        }
-                    }
-                }
+                
+                PhotoStripView(pictures: $location.picture, selectionEnabled: false, selectedIDs: $selectedPhotoIDs)
+
             }
+
         }
         .navigationTitle("Edit the location")
         .toolbar {

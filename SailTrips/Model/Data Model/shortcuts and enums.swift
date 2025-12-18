@@ -32,12 +32,6 @@ typealias LogbookSettings = CruiseDataSchemaV1.LogbookSettings
 typealias InventoryItem = CruiseDataSchemaV1.InventoryItem
 typealias Document = CruiseDataSchemaV1.Document
 
-// MARK: - Pattern helpers
-
-protocol DisplayableEnum {
-    var label: LocalizedStringKey { get }
-}
-
 // MARK: - Boat / propulsion
 
 enum PropulsionType: String, Codable, CaseIterable, Identifiable {
@@ -46,7 +40,7 @@ enum PropulsionType: String, Codable, CaseIterable, Identifiable {
     case motorsailer = "Motorsailer" // FIX: spelling unified
     case unknown = "unknown"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .sailboat: "Sailboat"
         case .motorboat: "Motorboat"
@@ -69,6 +63,8 @@ enum BoatType: String, Codable, CaseIterable, Identifiable {
     case schooner = "Schooner"
     case cat = "Catboat"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
     
     func generateThumbnail(from data: Data) -> UIImage? {
         guard let pdfDocument = PDFDocument(data: data),
@@ -87,8 +83,18 @@ enum BoatStatus: Int, Codable, CaseIterable, Identifiable {
     case selected = 0
     case inactive = 1
     case deleted = 2
-    var id: Int { rawValue } // FIX: stable numeric id for lists
+
+    var id: Int { rawValue }
+
+    var displayString: String {
+        switch self {
+        case .selected: "Selected"
+        case .inactive: "Inactive"
+        case .deleted:  "Deleted"
+        }
+    }
 }
+
 
 enum MotorUse: String, CaseIterable, Identifiable, Codable {
     case inboard = "inboard"
@@ -98,7 +104,7 @@ enum MotorUse: String, CaseIterable, Identifiable, Codable {
     case auxiliary = "auxiliary"
     case spare = "spare"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .inboard: "Inboard"
         case .outboard: "Outboard"
@@ -117,7 +123,7 @@ enum MotorEnergy: String, CaseIterable, Identifiable, Codable {
     case hybrid = "hybrid"
     case avGas = "av_gas"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .diesel: "Diesel"
         case .gasoline: "Gasoline"
@@ -141,12 +147,11 @@ enum ExtraRigging: String, Codable, CaseIterable, Identifiable {
     case lifelines
     case bowsprit
     case removableForestay
-    case boom
     case other
 
     var id: String { rawValue }
 
-    var defaultName: String {
+    var displayString: String {
         switch self {
         case .outrigger:          "Outrigger"
         case .spinnakerPole:      "Spinnaker pole"
@@ -157,7 +162,6 @@ enum ExtraRigging: String, Codable, CaseIterable, Identifiable {
         case .lifelines:          "Lifelines"
         case .bowsprit:           "Bowsprit"
         case .removableForestay:  "Removable forestay"
-        case .boom:               "Boom"
         case .other:              "Other"
         }
     }
@@ -187,7 +191,7 @@ enum EmergencyLevel: String, Codable, CaseIterable, Identifiable {
     case urgency = "urgency"
     case distress = "distress"
     var id: String { rawValue } // FIX: id from rawValue
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .none: "None"
         case .securite: "Sécurité"
@@ -213,7 +217,7 @@ enum Emergencies: String, Codable, CaseIterable, Identifiable {
     case none = "none"
     case other = "other emergency"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .fire: "Fire"
         case .flooding: "Flooding"
@@ -248,48 +252,54 @@ enum Urgencies: String, Codable, CaseIterable, Identifiable {
     case rudder = "rudder_failure"
     case water = "water_ingress"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum Distress: String, Codable, CaseIterable, Identifiable {
     case MOB = "mob"
-    case Fire = "fire_on_board"
-    case Flooding = "hull_flooding"
+    case Fire = "fire on board"
+    case Flooding = "hull flooding"
     case listing = "listing"
-    case sinking = "boat_sinking"
-    case medical = "serious_injury_disease"
-    case aground = "run_aground"
+    case sinking = "boat sinking"
+    case medical = "serious injury or disease"
+    case aground = "run aground"
     case Piracy = "piracy"
-    case abandon = "abandon_ship"
-    case relay = "mayday_relay"
+    case abandon = "abandon ship"
+    case relay = "mayday relay"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 // MARK: - Environment hazards
 
 enum EnvironmentDangers: String, Codable, CaseIterable, Identifiable {
     case none = "none"
-    case strongCurrents = "strong_currents" // FIX: keep one variant
-    case traffic = "heavy_traffic"
-    case floatingDebris = "floating_debris"
+    case strongCurrents = "strong currents" // FIX: keep one variant
+    case traffic = "heavy traffic"
+    case floatingDebris = "floating debris"
     case icebergs = "icebergs"
     case growlers = "growlers"
-    case weeds = "dense_weeds"
-    case nets = "fishing_nets"
-    case collisionCourse = "collision_course"
-    case uncharted = "uncharted_highs"
-    case magAnomalies = "magnetic_anomalies"
-    case animals = "hazardous_animals"
-    case orcas = "Orca attack"
-    case aggressiveWild = "aggressive_wildlife"
-    case military = "military_presence"
+    case weeds = "dense weeds"
+    case nets = "fishing nets"
+    case collisionCourse = "collision course"
+    case uncharted = "uncharted highs"
+    case magAnomalies = "magnetic anomalies"
+    case animals = "hazardous animals"
+    case orcas = "Orca interaction"
+    case aggressiveWild = "aggressive wildlife"
+    case military = "military presence"
     case submarine = "submarines"
-    case observationStation = "observation_station"
-    case floatingStructures = "floating_structures"
+    case observationStation = "observation station"
+    case floatingStructures = "floating structures"
     case windMills = "windmills"
-    case fixedStructures = "fixed_structures"
-    case unPredictable = "unpredictable_vessels"
+    case fixedStructures = "fixed structures"
+    case unPredictable = "unpredictable vessels"
     case other = "other"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 //Autopilot mode enum
@@ -305,7 +315,7 @@ enum Autopilot: String, Codable, CaseIterable, Identifiable {
     
     var id: String { rawValue }
     
-    var label: LocalizedStringKey {
+    var displayString: String{
         switch self {
         case .off: "Off"
         case .onTWA: "On, Wind mode (True)"
@@ -326,7 +336,7 @@ enum Steering: String, Codable, CaseIterable, Identifiable {
     
     var id: String { rawValue }
     
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .byHand: "By hand"
         case .autopilot: "Autopilot"
@@ -337,20 +347,56 @@ enum Steering: String, Codable, CaseIterable, Identifiable {
 }
 
 enum MooringType: String, Codable, CaseIterable, Identifiable {
-    case mooringBall = "mooring_ball"
-    case chainMooring = "chain_mooring"
-    case mooredOnBuoy = "moored_on_buoy"
-    case mooredOnShore = "moored_on_shore" // FIX: clearer wording
-    case medMoore = "Mediteraneen Mooring"
-    case anchorMoore = "Anchor and Mooring"
-    case mooredOnDock = "moored_on_floating dock"
-    case mooredBowAndStern = "moored with bowline"
-    case bowAndStern = "stopped with bowline and sternline"
-    case atAnchor = "at_anchor"
-    case double = "double_moored"
+    // Existing cases (raw values kept exactly as-is)
+    case mooredSternOn = "moored stern on" // general case, side ways to a quay, fixed dock
+    case mooringBall = "mooring_ball" // in some marinas, can be offered in a protected area
+    case chainMooring = "chain_mooring" // sometimes also offered in marinas
+    case mooredOnBuoy = "moored_on_buoy" // can be an option in some marinas all over the world
+    case mooredForeAndAft = "moored fore and aft" // mostly in buoy fields when narrow
+    case mooredMedAnchor = "mediterranean mooring on anchor" // common in Greece
+    case mooredMedLine = "mediterranean mooring stern-to with bowline" // common in western med "pendille"
+    case mooredMedBow  = "mediterranean mooring bow-to with sternline"
+    case mooredPiles = "moored on piles" // common in northern europe/US
+    case mooredInBerth = "moored in berth" // in large marinas
+    case bowAndStern = "moored with bowline and sternline" // e.g. line to bottom + stern line to rocks
+    case atAnchor = "at_anchor" // even in some marinas when no place remains
+    case AnchorAndStern = "at anchor with sternline" // narrow anchorages all over the world
+    case double = "double_moored" // overcrowded marinas
     case other = "other"
     case none = "none"
+    case alongsideDock = "alongside_dock"         // side-to pontoon/quay/dock
+    case fingerBerth   = "finger_berth"           // slip / finger pier berth
+    case raftedUp      = "rafted_up"              // tied alongside another boat (rafting)
+    case dryingOut     = "drying_out"             // taking the ground / drying mooring
+    case twoAnchors    = "two_anchors"            // bow + stern anchors (not a line)
+
     var id: String { rawValue }
+
+    var displayString: String {
+        switch self {
+        case .mooredSternOn:    "stern to"
+        case .mooringBall:      "on a mooring ball"
+        case .chainMooring:     "on a chain"
+        case .mooredOnBuoy:     "on a buoy"
+        case .mooredForeAndAft: "fore and aft"
+        case .mooredMedAnchor:  "med moor type with anchor"
+        case .mooredMedLine:    "med moor type stern-to with bow line"
+        case .mooredMedBow:     "Med moor type bow-to with stern line"
+        case .mooredPiles:      "on piles"
+        case .mooredInBerth:    "in berth"
+        case .bowAndStern:      "with bow & stern lines"
+        case .atAnchor:         "at anchor"
+        case .AnchorAndStern:   "anchor with stern line"
+        case .double:           "in a double mooring"
+        case .alongsideDock:    "alongside dock"
+        case .fingerBerth:      "in a finger berth / slip"
+        case .raftedUp:         "rafted up"
+        case .dryingOut:        "drying out / taking the ground"
+        case .twoAnchors:       "with two anchors (bow & stern)"
+        case .other:            "other"
+        case .none:             "none"
+        }
+    }
 }
 
 // MARK: - Sail states
@@ -370,21 +416,20 @@ enum SailState: String, Codable, CaseIterable, Identifiable {
     case tightFurled = "tight_furled"
     case outOfOrder = "out_of_order" //not a propulsion Tool anymore
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+
+    var displayString: String {
         switch self {
-        case .rigged: "rigged"
-        case .reefed: "reefed"
-        case .lowered: "lowered/all furled"
-        case .full: "full"
-        case .down: "down"
-        case .reef1: "reef 1"
-        case .reef2: "reef2"
-        case .reef3: "reef_3"
-        case .vlightFurled: "very lightly furled"
-        case .lightFurled: "light_furled"
-        case .halfFurled: "half_furled"
-        case .tightFurled: "tight_furled"
-        case .outOfOrder: "out_of_order"
+        case .lowered:      "Lowered / all furled"
+        case .reef1:        "Reef 1"
+        case .reef2:        "Reef 2"
+        case .reef3:        "Reef 3"
+        case .vlightFurled: "Very lightly furled"
+        case .lightFurled:  "Lightly furled"
+        case .halfFurled:   "Half furled"
+        case .tightFurled:  "Tightly furled"
+        case .outOfOrder:   "Out of order"
+        default:
+            rawValue
         }
     }
 }
@@ -394,6 +439,8 @@ enum ReductionMode: String, Codable, CaseIterable, Identifiable {
     case reef = "by reefing"
     case furl = "by lowering"
         var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum MotorState: String, Codable, CaseIterable, Identifiable {
@@ -404,14 +451,14 @@ enum MotorState: String, Codable, CaseIterable, Identifiable {
     case stopped = "stopped"
     case neutral = "neutral" // unclutched
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
-        case .idle: "Idle"
-        case .cruise: "Cruising"
-        case .slow: "Slow"
-        case .full: "Full"
-        case .stopped: "Stopped"
-        case .neutral: "Neutral"
+        case .idle: "idle"
+        case .cruise: "cruising"
+        case .slow: "slow"
+        case .full: "full"
+        case .stopped: "stopped"
+        case .neutral: "in neutral"
         }
     }
 }
@@ -424,7 +471,7 @@ enum TypeOfCruise: String, Codable, CaseIterable, Identifiable {
     case convoyage = "convoyage"
     case test = "test"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .round: "Round Trip"
         case .fromTo: "To Destination"
@@ -439,7 +486,7 @@ enum CruiseStatus: String, Codable, CaseIterable, Identifiable {
     case underway = "ongoing" // label can still show “Underway/Ongoing”
     case completed = "completed"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
         case .planned: "Planned"
         case .underway: "Ongoing"
@@ -458,6 +505,8 @@ enum TypeOfTrip: String, Codable, CaseIterable, Identifiable {
     case toDestination = "trip to destination"
     case regatta = "regatta"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 
@@ -471,13 +520,13 @@ enum PropulsionTool: String, Codable, CaseIterable, Identifiable {
     case motorsail = "motor_and_sail"
     case none = "none"
     var id: String { rawValue }
-    var label: LocalizedStringKey {
+    var displayString: String {
         switch self {
-        case .motor: "Motor"
-        case .sail: "Sails"
-        case .inTow: "In tow"
-        case .motorsail: "Motor and Sail"
-        case .none: "None"
+        case .motor: "motor"
+        case .sail: "sails"
+        case .inTow: "in tow"
+        case .motorsail: "motor and sail"
+        case .none: "none"
         }
     }
 }
@@ -488,6 +537,8 @@ enum TripStatus: String, Codable, CaseIterable, Identifiable {
     case interrupted = "interrupted"
     case completed = "completed"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum NavStatus: String, Codable, CaseIterable, Identifiable {
@@ -498,6 +549,8 @@ enum NavStatus: String, Codable, CaseIterable, Identifiable {
     case stormTactics = "storm tactics"
     case none = "none"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum NavZone: String, Codable, CaseIterable, Identifiable {
@@ -512,6 +565,8 @@ enum NavZone: String, Codable, CaseIterable, Identifiable {
     case traffic = "traffic lane"
     case none = "none"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 // MARK: - Sailing geometry
@@ -521,6 +576,8 @@ enum Tack: String, Codable, CaseIterable, Identifiable {
     case port = "port"
     case none = "none"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum PointOfSail: String, Codable, CaseIterable, Identifiable {
@@ -532,6 +589,8 @@ enum PointOfSail: String, Codable, CaseIterable, Identifiable {
     case deadRun = "dead run"
     case stopped = "stopped"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 // MARK: - Weather
@@ -552,6 +611,8 @@ enum Precipitations: String, Codable, CaseIterable, Identifiable {
     case graupel = "graupel"
     case crystals = "crystals"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum SevereWeather: String, Codable, CaseIterable, Identifiable {
@@ -566,6 +627,8 @@ enum SevereWeather: String, Codable, CaseIterable, Identifiable {
     case derecho = "derecho"
     case mesoscale = "mesoscale_convective_system"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 // MARK: - Locations
@@ -580,9 +643,9 @@ enum TypeOfLocation: String, Codable, CaseIterable, Identifiable {
     case stormShelter = "storm_shelter"
     case pOI = "poi"
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
-
-
 // MARK: - Misc
 
 enum CruiseNav {
@@ -609,37 +672,43 @@ enum LandmarkCategory: String, Codable, CaseIterable, Identifiable {
     case cove = "cove"
     case transit = "transit" //alignement
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
-enum LandmarkTransition: String, CaseIterable {
+enum LandmarkTransition: String, Codable, CaseIterable, Identifiable {
     case approach = "approaching"
     case round = "round"
     case leavingBehind = "leaving behind"
     case cross = "cross"
     case keepTransit = "keep transit"
     case keepFixedBearing = "keep fixed bearing on"
+    var id: String { rawValue }
+    var displayString: String { rawValue }
 }
 
-enum CrewIncident: String, CaseIterable {
-    case seasick = " reported to be seasick"
-    case sunburn = " has a sunburn"
-    case toeInjury =  " got an injured toe"
-    case ankleSprain = " got a sprained ankle"
-    case wristSprain = " got a sprained wrist"
-    case fingerBurned = " burned finger(s) during rope management"
-    case cut = " got small cut, no special treatment required"
-    case head = " suffered a minor head trauma"
-    case fall = " was bruised from a fall"
-    case headache = " has a headache"
-    case backPain = " has back pain"
-    case tired = " feels very tired"
-    case sick = " is sick but doesn't require further medical care"
-    case other = " other (precise)"
+enum CrewIncident: String, Codable, CaseIterable, Identifiable {
+    case seasick = "reported to be seasick"
+    case sunburn = "has a sunburn"
+    case toeInjury =  "got an injured toe"
+    case ankleSprain = "got a sprained ankle"
+    case wristSprain = "got a sprained wrist"
+    case fingerBurned = "burned finger(s) during rope management"
+    case cut = "got small cut, no special treatment required"
+    case head = "suffered a minor head trauma"
+    case fall = "was bruised from a fall"
+    case headache = "has a headache"
+    case backPain = "has back pain"
+    case tired = "feels very tired"
+    case sick = "is sick but doesn't require further medical care"
+    case other = "other (precise)"
     case none = " "
+    var id: String { rawValue }
+    var displayString: String { rawValue }
 }
 
-enum Encounters: String, CaseIterable {
-    case dolphin = "Dolphins"
+enum Encounters: String, Codable, CaseIterable, Identifiable {
+    case dolphin = "dolphins"
     case whale = "Whales"
     case shark = "Sharks"
     case tortoises = "Tortoises"
@@ -652,58 +721,54 @@ enum Encounters: String, CaseIterable {
     case auroras = "Auroras"
     case flying_fish = "Flying Fish"
     case other = "Other"
+    var id: String { rawValue }
+    var displayString: String { rawValue }
 }
 
 enum InventoryType: String, Codable, CaseIterable, Identifiable {
-    case extraRigging
-    case safety
-    case tools
-    case electronics
-    case spares
-    case provisioning
-    case other
+    case extraRigging = "extra rigging"
+    case tank  = "tank"
+    case safety = "for safety"
+    case tools = "tools"
+    case electronics = "electronics"
+    case spares = "spares"
+    case provisioning = "provisioning"
+    case other = "other"
 
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
 enum InventoryCategory: String, Codable, CaseIterable, Identifiable {
-    case navigation
-    case rigging
-    case safety
-    case comfort
-    case maintenance
-    case food
-    case galley
-    case other
-    case spares
+    case navigation = "navigation equipment"
+    case rigging = "rigging"
+    case safety = "for safety"
+    case comfort = "comfort"
+    case maintenance = "for maintenance"
+    case food = "food"
+    case galley = "galley"
+    case other = "other"
+    case spares = "spares"
     
 
     var id: String { rawValue }
+    var displayString: String { rawValue }
+
 }
 
-// MARK: - Autopilot helpers
+enum TankTypes : String, Codable, CaseIterable, Identifiable {
+    case water = "water"
+    case fuel = "fuel"
+    case batteryBank = "battery bank"
+    case holdingTank = "holding tank"
+    
+    var id: String { rawValue }
+    var displayString: String { rawValue }
+}
 
 extension Autopilot {
 
-    /// Human-readable name for display in the UI.
-    var displayName: String {
-        if self == .off {
-            return "Off"
-        }
-
-        // Try rawValue first if it exists, fall back to type name
-        let base: String
-        if let raw = (self as? any RawRepresentable)?.rawValue as? String {
-            base = raw
-        } else {
-            base = String(describing: self)
-        }
-
-        return base
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-            .capitalized
-    }
 
     /// Whether this mode normally has a numeric target (heading, COG, etc.).
     /// We assume every non-off mode can take a direction/target angle.
@@ -723,5 +788,19 @@ extension Autopilot {
         }
 
         return Autopilot.allCases.first(where: { $0 != .off }) ?? .off
+    }
+}
+
+extension PointOfSail {
+    static func from(absAwa: Int, fallback: PointOfSail) -> PointOfSail {
+        switch absAwa {
+        case 0...39:   return .closeHauled
+        case 40...75:  return .closeReach
+        case 76...100: return .beamReach
+        case 101...130:return .broadReach
+        case 131...160:return .running
+        case 161...180:return .deadRun
+        default:       return fallback
+        }
     }
 }

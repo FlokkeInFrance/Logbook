@@ -26,8 +26,9 @@ enum HomePageNavigation: Hashable {
     case triplist
     case cruise
     case logbookManEntry
+    case logFromInstances
     case parameters
-    case logView  // nil = all logs, non-nil = logs for that trip
+    case logView(tripID: UUID?)  // nil = all logs, non-nil = logs for that trip
     case tripDetails
     case actionLog
 }
@@ -138,9 +139,18 @@ struct HomePage: View {
                     Text("Missing settings row.")
                 }
             }
-
+        case .logFromInstances:
+            require(instances, "No Instances row.") { inst in
+                if let s = settings.first {
+                    LogbookEntryView(instances: inst, settings: s)
+                } else {
+                    Text("Missing settings row.")
+                }
+            }
         case .parameters: SettingsView()
-        case .logView: LogbookViewer()
+        case .logView(let tripID):
+            LogbookViewer(tripID: tripID)
+
         case .tripDetails: TripDetailHostView()
 
         case .actionLog:

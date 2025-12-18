@@ -32,6 +32,7 @@ struct BoatDetailsView: View {
     @State private var isValidAxiomIP: Bool = true
     @State private var isValidNMEAIP: Bool = true
     @State private var isRigSheetPresented: Bool = false
+    @State private var showTankLayoutSheet = false
     
     @FocusState var focus: Bool
     
@@ -75,7 +76,7 @@ struct BoatDetailsView: View {
             Section(header: Text("Description")) {
                 Picker("Propulsion", selection: $aBoat.boatType) {
                     ForEach(PropulsionType.allCases) { value in
-                        Text(value.label).tag(value)
+                        Text(value.displayString).tag(value)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -119,7 +120,7 @@ struct BoatDetailsView: View {
                     
                     ForEach(aBoat.motors, id: \.id) { motor in
                         HStack {
-                            Text(motor.use.label)
+                            Text(motor.use.displayString)
                             Spacer()
                             Text("\(motor.motorBrand) (\(motor.motorType))")
                         }
@@ -144,7 +145,7 @@ struct BoatDetailsView: View {
                         ForEach(rigs, id: \.id) { item in
                             if let kind = item.extraRiggingKind {
                                 // Standard item from the ExtraRigging enum
-                                Text(kind.defaultName)
+                                Text(kind.displayString)
                             } else {
                                 // Custom extra-rig item, show its name
                                 Text(item.name)
@@ -168,6 +169,44 @@ struct BoatDetailsView: View {
                 NumberField(label: "Displacement", inData: $aBoat.weight,
                             inString: BoatDetailsView.myFormat.string(for: aBoat.weight) ?? "")
             }
+            
+            Section(header: Text("Tanks and Batteries")) {
+                let tanks = aBoat.tankItems  // InventoryItem where type == .tank :contentReference[oaicite:5]{index=5}
+
+                if tanks.isEmpty {
+                    Text("No tanks defined.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(TankTypes.allCases) { kind in
+                        let list = aBoat.tankItems(of: kind)   // :contentReference[oaicite:6]{index=6}
+                        if !list.isEmpty {
+                            DisclosureGroup("\(kind.title) (\(list.count))") {  // :contentReference[oaicite:7]{index=7}
+                                ForEach(list, id: \.id) { item in
+                                    HStack {
+                                        Text(item.name.isEmpty ? "Unnamed" : item.name)
+                                        Spacer()
+                                        if item.capacity > 0 {
+                                            Text("\(item.capacity)")
+                                                .foregroundStyle(.secondary)
+                                                .monospacedDigit()
+                                        } else {
+                                            Text("unknown")
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Button {
+                    showTankLayoutSheet = true
+                } label: {
+                    Label("Edit Tanks and Batteries", systemImage: "slider.horizontal.3")
+                }
+            }
+
             
             Section(header: Text("Administrative Data")) {
                 TextField("Reg Num", text: $aBoat.registrationNumber).autocorrectionDisabled()
@@ -249,6 +288,10 @@ struct BoatDetailsView: View {
                 isPresented: $isRigSheetPresented
             )
         }
+        .sheet(isPresented: $showTankLayoutSheet) {
+            TankLayoutSheet(boat: aBoat)
+        }
+
     }
 }
 
@@ -322,7 +365,7 @@ struct SailModifyView: View {
                                 inString: BoatDetailsView.myFormat.string(for: sails[idx].sailArea) ?? "")
                     Picker("State", selection: $sails[idx].currentState) {
                         ForEach(SailState.allCases, id: \.self) { state in
-                            Text(state.label).tag(state)
+                            Text(state.displayString).tag(state)
                         }
                     }
                     HStack {
@@ -352,7 +395,7 @@ struct SailModifyView: View {
                         Button("Add a furlable Jib") { addJib() }
                     }
                     if !sails.contains(where: { $0.nameOfSail == "Genoa" || $0.nameOfSail == "Jib"}) {
-                        Button("Add a furlable Jib") { addJibReef() }
+                        Button("Add a reefable Jib") { addJibReef() }
                     }
                     if !sails.contains(where: { $0.nameOfSail == "Gennaker" }) {
                         Button("Add a Gennaker") { addGennaker() }
@@ -440,10 +483,10 @@ struct MotorModifyView: View {
                 Form {
                     TextField("Name", text: $newMotor.name).autocorrectionDisabled()
                     Picker("Use", selection: $newMotor.use) {
-                        ForEach(MotorUse.allCases) { m in Text(m.label).tag(m) }
+                        ForEach(MotorUse.allCases) { m in Text(m.displayString).tag(m) }
                     }
                     Picker("Energy", selection: $newMotor.energy) {
-                        ForEach(MotorEnergy.allCases) { e in Text(e.label).tag(e) }
+                        ForEach(MotorEnergy.allCases) { e in Text(e.displayString).tag(e) }
                     }
                     Toggle("Inboard", isOn: $newMotor.inboard)
                     TextField("Brand", text: $newMotor.motorBrand).autocorrectionDisabled()
@@ -467,7 +510,7 @@ struct MotorModifyView: View {
                     VStack(alignment: .leading) {
                         ForEach(Array(motors.enumerated()), id: \.element.id) { idx, motor in
                             HStack {
-                                Text(motor.use.label)
+                                Text(motor.use.displayString)
                                 Spacer()
                                 Text("\(motor.motorBrand) (\(motor.motorType))")
                             }
@@ -517,7 +560,7 @@ struct RigModifyView: View {
                 Section("Standard equipment") {
                     ForEach(standardRigs, id: \.id) { rig in
                         Toggle(isOn: binding(for: rig)) {
-                            Text(rig.defaultName)
+                            Text(rig.displayString)
                         }
                     }
                 }
@@ -575,7 +618,7 @@ struct RigModifyView: View {
         
         let item = CruiseDataSchemaV1.InventoryItem(
             boat: boat,
-            name: rig.defaultName,
+            name: rig.displayString,
             category: .rigging,
             subcategory: "extra rigging",
             type: .extraRigging,

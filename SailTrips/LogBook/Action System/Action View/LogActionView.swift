@@ -36,6 +36,7 @@ struct LogActionView: View {
     let onClose: () -> Void
     
     @Environment(\.modelContext) private var modelContext
+    @Query var settings: [LogbookSettings]
     
     private let registry = ActionRegistry.makeDefault()
     
@@ -64,14 +65,30 @@ struct LogActionView: View {
 
     @State private var showSailingSheet = false
     @State private var sailingRuntime: ActionRuntime? = nil
+    @State private var showMooringPicker = false
+    @State private var mooringRuntime: ActionRuntime? = nil
+
 
     
     // state for text prompt (one line of text)
     @State private var textPromptRequest: ActionTextPromptRequest?
+    @State private var confirmRequest: ActionConfirmRequest?
+    @State private var showTankInventorySheet = false
+    @State private var tankInventoryFilterKinds: Set<TankTypes>? = nil
+
+    @State private var tankSnapshot: [UUID: Int] = [:]          // tank.id -> percentFull
+    @State private var tankSheetOriginTag: String? = nil        // "A9" or "AF18"
+    // AF4
+    @State private var showProblemReporterSheet = false
+    @State private var problemText: String = ""
+    @State private var problemImages: [UIImage] = []
+    // AF5
+    @State private var showManualLogSheet = false
+    // AF6
+    @State private var showInstancesEditorSheet = false
 
     @State private var showNMEATestSheet = false
     // LogActionView.swift
-
     @StateObject private var pos = PositionUpdater()
     
     // MARK: - Init
@@ -120,8 +137,9 @@ struct LogActionView: View {
         "AF15", // Log position
         "AF15x", //test nmea stream
         "AF16", // Goto next WPT
-        "AF17"  // Extra rigging
-    ]
+        "AF17", // use extrarigging
+        "AF18"  //get new tank levels
+]
     
     // MARK: - Fixed AF groups (layout)
     
@@ -152,7 +170,7 @@ struct LogActionView: View {
     
     /// Sixth line: other logs
     private let otherLogTags: [String] = [
-        "AF5", "AF6", "AF15", "AF15x"
+        "AF18", "AF5", "AF6", "AF15", "AF15x"
     ]
     
     
@@ -167,6 +185,7 @@ struct LogActionView: View {
         ActionContext(
             instances: instances,
             modelContext: modelContext,
+            currentSettings: { settings.first ?? LogbookSettings() },
             showBanner: { msg in
                 showBanner(msg)
                 bannerText = msg
@@ -179,6 +198,17 @@ struct LogActionView: View {
             presentTextPrompt: { request in
                 Task { @MainActor in textPromptRequest = request }
             },
+            presentConfirm: { request in                      // ✅ NEW
+                Task { @MainActor in confirmRequest = request }
+            },
+            openSailingGeometrySheet: { variant in            // ✅ NEW
+                Task { @MainActor in
+                    guard !showSailingSheet else { return }
+                    let rt = ActionRuntime(context: actionContext, variant: variant)
+                    sailingRuntime = rt
+                    showSailingSheet = true
+                }
+            },
             positionUpdater: pos,
             nmeaSnapshot: {
                 // later: return nmeaAdapter.latestSnapshot
@@ -187,8 +217,8 @@ struct LogActionView: View {
         )
     }
 
-    
     // MARK: - Body
+    //***************************
     
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -235,8 +265,266 @@ struct LogActionView: View {
         .sheet(isPresented: $showNMEATestSheet) {
             NMEATestSheet(boat: instances.selectedBoat)
         }
+        .sheet(item: $confirmRequest) { request in
+            ConfirmSheet(request: request)
+        }
+        .sheet(isPresented: $showMooringPicker, onDismiss: {
+            rederiveSituation()
+        }) {
+            if let rt = mooringRuntime {
+                MooringPickerSheet(runtime: rt)
+            }
+        }
+        .sheet(isPresented: $showTankInventorySheet, onDismiss: {
+            logTankChangesAfterDismiss()
+            rederiveSituation()
+        }) {
+            TankInventorySheet(
+                boat: instances.selectedBoat,
+                filterKinds: tankInventoryFilterKinds
+            )
+        }
+        // AF4 – Failure report → creates a ToService task
+        .sheet(isPresented: $showProblemReporterSheet) {
+            ProblemInputView(
+                item: nil,
+                observationText: $problemText,
+                images: $problemImages
+            ) { pictures, observation in
+                let task = ToService(boat: instances.selectedBoat)
+                task.observation = observation
+                task.pictures = pictures.map { Picture(data: $0) }
+                modelContext.insert(task)
+                try? modelContext.save()
+            }
+        }
+        //AF5 manual log
+        .sheet(isPresented: $showManualLogSheet, onDismiss: {
+            rederiveSituation()
+        }) {
+            NavigationStack {
+                
+                LogbookEntryView(instances: instances, settings: settings.first ?? LogbookSettings())
+            }
+        }
+        //AF6 log from modifications on instance table
+        .sheet(isPresented: $showInstancesEditorSheet, onDismiss: {
+            rederiveSituation()
+        }) {
+            NavigationStack {
+                InstancesView(
+                    settings: settings.first ?? LogbookSettings(),
+                    instances: instances
+                )
+            }
+        }
     }
     
+    //END OF BODY
+    //**************************************T
+    
+    private func runAction(_ variant: ActionVariant) {
+
+
+            // AF4 / AF5 / AF6 are UI-only: present sheets
+        if variant.tag == "AF4" {
+            problemText = ""
+            problemImages = []
+            showProblemReporterSheet = true
+            return
+        }
+
+        if variant.tag == "AF5" {
+            showManualLogSheet = true
+            return
+        }
+
+        if variant.tag == "AF6" {
+            showInstancesEditorSheet = true
+            return
+        }
+        
+        if variant.tag == "A8X" {
+            let rt = ActionRuntime(context: actionContext, variant: variant)
+            mooringRuntime = rt
+            showMooringPicker = true
+            return
+        }
+
+        if variant.tag == "AF15x" {
+            showNMEATestSheet = true
+            return
+        }
+        // Tank sheets (A9 / AF18)
+        if variant.tag == "AF18" {
+            tankSheetOriginTag = variant.tag
+            tankInventoryFilterKinds = nil // all tanks
+
+            // snapshot visible tanks
+            tankSnapshot = Dictionary(uniqueKeysWithValues:
+                instances.selectedBoat.tankItems.map { ($0.id, $0.percentFull) }
+            )
+
+            showTankInventorySheet = true
+            return
+        }
+
+        if variant.tag == "A9" {
+            tankSheetOriginTag = variant.tag
+            tankInventoryFilterKinds = [.fuel] // fuel only
+
+            // snapshot only fuel tanks
+            let fuelTanks = instances.selectedBoat.tankItems(of: .fuel)
+            tankSnapshot = Dictionary(uniqueKeysWithValues:
+                fuelTanks.map { ($0.id, $0.percentFull) }
+            )
+
+            showTankInventorySheet = true
+            return
+        }
+
+        
+        let rt = ActionRuntime(context: actionContext, variant: variant)
+
+        // 1. Sail plan sheet (A28 / AF2S)
+        if (variant.tag == "A28") || (variant.tag == "AF2S") {
+            sailPlanRuntime = rt
+            showSailPlanSheet = true
+            return
+        }
+
+        // 2. Autopilot sheet (A26)
+        if variant.tag == "A26" {
+            autopilotRuntime = rt
+            showAutopilotSheet = true
+            return
+        }
+
+        // 3. Does this action also need the sailing geometry sheet?
+        let needsSailingSheetTags: Set<String> = [
+            "A27", // sails set
+            "A23", // change course
+            "A21", // deviation
+            "A20", // back on route
+            "A39", // tack
+            "A40", // gybe
+            "A43", // fall off
+            "A44"  // luff
+        ]
+
+        let needsSailingSheet = needsSailingSheetTags.contains(variant.tag)
+
+        // Special exception: A39 + close-hauled => just flip tack, no sheet
+        if variant.tag == "A39",
+           rt.instances.pointOfSail == PointOfSail.closeHauled {
+            variant.handler(rt)          // handler will flip tack + log
+            rederiveSituation()
+            return
+        }
+
+        // 4. Run the base handler (may be a no-op for some)
+        variant.handler(rt)
+
+        // 5. Show sailing sheet if needed
+        if needsSailingSheet {
+            sailingRuntime = rt
+            showSailingSheet = true
+        } else {
+            rederiveSituation()
+        }
+    }
+    
+    // Write to the log when changes occur in tank levels (AF18 and A9)
+
+    private func logTankChangesAfterDismiss() {
+        let boat = instances.selectedBoat
+
+        // Decide which tanks were shown
+        let shownTanks: [InventoryItem] = {
+            if let filter = tankInventoryFilterKinds {
+                return boat.tankItems.filter { $0.tankKind.map(filter.contains) ?? false }
+            } else {
+                return boat.tankItems
+            }
+        }()
+
+        // Compute diffs
+        struct Diff {
+            let tank: InventoryItem
+            let oldP: Int
+            let newP: Int
+            var delta: Int { newP - oldP }
+        }
+
+        let diffs: [Diff] = shownTanks.compactMap { t in
+            let oldP = tankSnapshot[t.id] ?? t.percentFull
+            let newP = t.percentFull
+            guard newP != oldP else { return nil }
+            return Diff(tank: t, oldP: oldP, newP: newP)
+        }
+
+        // A9: always log "Fuel tanked" (+ append new level if any positive change)
+        if tankSheetOriginTag == "A9" {
+            let positive = diffs.filter { $0.delta > 0 }
+            if positive.isEmpty {
+                ActionRegistry.logSimple("Fuel tanked", using: actionContext)
+            } else {
+                // If one fuel tank: single %; otherwise list each tank’s final %
+                let fuelTanks = boat.tankItems(of: .fuel)
+                if fuelTanks.count == 1, let t = fuelTanks.first {
+                    ActionRegistry.logSimple("Fuel tanked, new fuel level: \(t.percentFull)%", using: actionContext)
+                } else {
+                    let levels = fuelTanks.map { tank in
+                        let name = tank.name.isEmpty ? "Unnamed" : tank.name
+                        return "\(name) \(tank.percentFull)%"
+                    }.joined(separator: ", ")
+                    ActionRegistry.logSimple("Fuel tanked, new fuel levels: \(levels)", using: actionContext)
+                }
+            }
+
+            // cleanup
+            tankSheetOriginTag = nil
+            tankSnapshot = [:]
+            return
+        }
+
+        // AF18: log what changed (up or down), one sentence per tank changed
+        if tankSheetOriginTag == "AF18" {
+            for d in diffs {
+                let t = d.tank
+                let kindTitle = t.tankKind?.title ?? "Tank"
+                let name = t.name.isEmpty ? "Unnamed" : t.name
+
+                let direction = d.delta > 0 ? "increased" : "decreased"
+                let absDelta = abs(d.delta)
+
+                if t.capacity > 0, let amt = t.amountComputed {
+                    let unit = t.tankKind?.unit(using: actionContext.currentSettings()) ?? ""
+                    ActionRegistry.logSimple(
+                        "\(kindTitle) in \(name) has \(direction) by \(absDelta)%, \(amt)\(unit) remaining",
+                        using: actionContext
+                    )
+                }
+                else {
+                    ActionRegistry.logSimple(
+                        "\(kindTitle) in \(name) has \(direction) by \(absDelta)%, now \(t.percentFull)%",
+                        using: actionContext
+                    )
+                }
+            }
+
+            // cleanup
+            tankSheetOriginTag = nil
+            tankSnapshot = [:]
+            return
+        }
+
+        // fallback cleanup
+        tankSheetOriginTag = nil
+        tankSnapshot = [:]
+    }
+
+
     // MARK: - Title bar with situation picker
     
     private var titleBar: some View {
@@ -502,68 +790,40 @@ struct LogActionView: View {
         }
     }
     
-    private func runAction(_ variant: ActionVariant) {
-        
-        if variant.tag == "AF15x" {
-            showNMEATestSheet = true
-            return
-        }
-        let rt = ActionRuntime(context: actionContext, variant: variant)
-
-        // 1. Sail plan sheet (A28 / AF2S)
-        if (variant.tag == "A28") || (variant.tag == "AF2S") {
-            sailPlanRuntime = rt
-            showSailPlanSheet = true
-            return
-        }
-
-        // 2. Autopilot sheet (A26)
-        if variant.tag == "A26" {
-            autopilotRuntime = rt
-            showAutopilotSheet = true
-            return
-        }
-
-        // 3. Does this action also need the sailing geometry sheet?
-        let needsSailingSheetTags: Set<String> = [
-            "A27", // sails set
-            "A23", // change course
-            "A21", // deviation
-            "A20", // back on route
-            "A39", // tack
-            "A40", // gybe
-            "A43", // fall off
-            "A44"  // luff
-        ]
-
-        let needsSailingSheet = needsSailingSheetTags.contains(variant.tag)
-
-        // Special exception: A39 + close-hauled => just flip tack, no sheet
-        if variant.tag == "A39",
-           rt.instances.pointOfSail == PointOfSail.closeHauled {
-            variant.handler(rt)          // handler will flip tack + log
-            rederiveSituation()
-            return
-        }
-
-        // 4. Run the base handler (may be a no-op for some)
-        variant.handler(rt)
-
-        // 5. Show sailing sheet if needed
-        if needsSailingSheet {
-            sailingRuntime = rt
-            showSailingSheet = true
-        } else {
-            rederiveSituation()
-        }
-    }
-
+   
 
     private func rederiveSituation() {
         let newID = deriveSituationID(for: instances)
         currentSituationID = newID
     }
+    
+    private struct ConfirmSheet: View {
+        @Environment(\.dismiss) private var dismiss
+        let request: ActionConfirmRequest
 
+        var body: some View {
+            NavigationStack {
+                Form {
+                    Text(request.message)
+                }
+                .navigationTitle(request.title)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(request.cancelTitle) {
+                            request.completion(false)
+                            dismiss()
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(request.confirmTitle) {
+                            request.completion(true)
+                            dismiss()
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 

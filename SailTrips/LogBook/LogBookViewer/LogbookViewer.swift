@@ -13,44 +13,42 @@ import SwiftData
 /// Uses global selection: `active.selectedTripID`
 /// - nil => show all logs
 /// - UUID => only logs whose `trip?.id` matches
+///
 struct LogbookViewer: View {
-    @EnvironmentObject private var active: activations
-
-    @Query(sort: [SortDescriptor(\Logs.dateOfLog, order: .reverse)])
-    private var logs: [Logs]
-
+    
+    let tripID: UUID?          // nil = all logs
+    
+    @Query private var logs: [Logs]
     @Query private var settingsArray: [LogbookSettings]
-
+    
     @State private var ascending = false
     @State private var searchText = ""
-
+    
     private var logbookSettings: LogbookSettings? { settingsArray.first }
-
-    private var visibleLogs: [Logs] {
-        // 1) Filter by trip (optional-safe)
-        var base = logs.filter { log in
-            guard let filterID = active.selectedTripID else { return true }
-            return log.trip.id == filterID
-        }
-
-        // 2) Optional search (cheap)
-        if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let q = searchText.lowercased()
-            base = base.filter { log in
-                log.logEntry.lowercased().contains(q)
-                || log.nextWaypoint.lowercased().contains(q)
-            }
-        }
-
-        // 3) Optional order toggle
-        if ascending {
-            base.reverse() // since query is already .reverse by date
-        }
-        return base
+    
+    private var sortedLogs: [Logs] {
+        ascending ? logs.sorted { $0.dateOfLog < $1.dateOfLog }
+                  : logs.sorted { $0.dateOfLog > $1.dateOfLog }
     }
-
+    
+    init(tripID: UUID?) {
+        self.tripID = tripID
+        
+        if let tripID {
+            _logs = Query(
+                filter: #Predicate<Logs> { log in
+                    log.trip.id == tripID
+                },
+                sort: [SortDescriptor(\Logs.dateOfLog, order: .reverse)]
+            )
+        } else {
+            _logs = Query(sort: [SortDescriptor(\Logs.dateOfLog, order: .reverse)])
+        }
+    }
+    
+    
     var body: some View {
-        List(visibleLogs) { log in
+        List(sortedLogs) { log in
             NavigationLink {
                 LogDetailView(log: log, settings: logbookSettings)
             } label: {
@@ -67,7 +65,7 @@ struct LogbookViewer: View {
             }
         }
         .overlay {
-            if visibleLogs.isEmpty {
+            if logs.isEmpty {
                 ContentUnavailableView(
                     "No log entries",
                     systemImage: "note.text",
@@ -76,19 +74,17 @@ struct LogbookViewer: View {
             }
         }
     }
-
-
+    
     private var title: String {
-        active.selectedTripID == nil ? "Logbook" : "Trip logbook"
+        tripID == nil ? "Logbook" : "Trip logbook"
     }
 
     private var emptyMessage: String {
-        if active.selectedTripID == nil {
-            return "Once you start logging, entries will appear here."
-        } else {
-            return "This trip has no log entries yet."
-        }
+        tripID == nil
+        ? "Once you start logging, entries will appear here."
+        : "This trip has no log entries yet."
     }
+
 }
 
 // MARK: - Row

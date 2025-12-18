@@ -41,57 +41,114 @@ final class InstanceLogHandler {
 
     // MARK: - Mooring & Nav Status & Zone
 
+    // MARK: - Mooring & Nav Status & Zone
+
     func mooringChanged(from old: MooringType, to newVal: MooringType) {
         guard let trip = instances.currentTrip else { return }
-        var text = ""
-        switch old {
-        case .mooringBall:    text = (newVal == .none) ? "Dropped Mooring Ball" : textForMooring(newVal)
-        case .chainMooring:   text = (newVal == .none) ? "Dropped Mooring Chain" : textForMooring(newVal)
-        case .mooredOnBuoy:   text = (newVal == .none) ? "Left Buoy" : textForMooring(newVal)
-        case .mooredOnShore:  text = (newVal == .none) ? "Dropped Lines" : textForMooring(newVal)
-        case .atAnchor:       text = (newVal == .none) ? "Raised Anchor" : textForMooring(newVal)
-        case .double:         text = (newVal == .none) ? "Left Mooring, Dropped Lines" : textForMooring(newVal)
-        case .anchorMoore:    text = (newVal == .none) ? "Left Mooring and Raised Anchor" : textForMooring(newVal)
-        case .medMoore:       text = (newVal == .none) ? "Left Mooring" : textForMooring(newVal)
-        case .mooredBowAndStern: text = (newVal == .none) ? "Left Mooring" : textForMooring(newVal)
-        case .bowAndStern:    text = (newVal == .none) ? "Left Mooring" : textForMooring(newVal)
-        case .other:          text = (newVal == .none) ? "Left Mooring" : textForMooring(newVal)
-        case .none:
+
+        // 1) Build log text
+        let text: String
+        if newVal == .none {
+            text = textForUnmooring(from: old)
+        } else if old == .none {
             text = textForMooring(newVal)
-        case .mooredOnDock:   text = (newVal == .none) ? "Left Mooring" : textForMooring(newVal)
-            
+        } else {
+            // Switching from one mooring type to another
+            text = "Mooring changed: \(old.displayString) → \(newVal.displayString)"
         }
 
-        // Side effects on Instances
+        // 2) Side effects on Instances
         if newVal != .none {
             instances.navStatus = .stopped
             instances.currentLocation = nil
-            if newVal == .mooredOnShore || newVal == .double {
-                instances.currentNavZone = .harbour
-            } else {
-                instances.currentNavZone = .anchorage
+
+            // Best-effort nav zone inference from mooring type
+            if let inferred = inferredZone(for: newVal) {
+                instances.currentNavZone = inferred
             }
         }
 
         writer.writeMerged(trip: trip, instances: instances, stack: stack, header: text)
+    }
 
+    private func textForUnmooring(from old: MooringType) -> String {
+        switch old {
+        case .atAnchor, .AnchorAndStern, .twoAnchors:
+            return "Raised anchor"
+        case .mooringBall:
+            return "Left mooring ball"
+        case .chainMooring:
+            return "Left chain mooring"
+        case .mooredOnBuoy, .mooredForeAndAft:
+            return "Left buoy"
+        default:
+            return "Cast off"
+        }
     }
 
     private func textForMooring(_ t: MooringType) -> String {
         switch t {
-        case .mooringBall: return "Moored on a ball"
-        case .chainMooring: return "Moored on a chain"
-        case .mooredOnBuoy: return "Moored on a buoy"
-        case .mooredOnShore: return "Mooring lines set"
-        case .atAnchor: return "Dropped anchor"
-        case .double: return "Double moored"
-        case .medMoore: return " moored in mediterranean way"
-        case .bowAndStern: return "stopped with bowline and sternline"
-        case .mooredBowAndStern: return " moored with bowline and sternline"
-        case .other: return "Moored"
-        case .none: return "Mooring cleared"
-        case .anchorMoore: return "Moored on shore with anchor at the bow"
-        case .mooredOnDock: return "Moored at a dock"
+        case .atAnchor:
+            return "Dropped anchor"
+        case .AnchorAndStern:
+            return "Anchored with stern line"
+        case .twoAnchors:
+            return "Anchored with bow and stern anchors"
+        case .mooringBall:
+            return "Moored on a ball"
+        case .chainMooring:
+            return "Moored on a chain"
+        case .mooredOnBuoy:
+            return "Moored on a buoy"
+        case .mooredForeAndAft:
+            return "Moored fore and aft"
+        case .mooredSternOn:
+            return "Moored stern-to"
+        case .mooredMedAnchor:
+            return "Med-moor (anchor)"
+        case .mooredMedLine:
+            return "Med-moor (stern-to, bow line)"
+        case .mooredMedBow:
+            return "Med-moor (bow-to, stern line)"
+        case .mooredPiles:
+            return "Moored on piles"
+        case .mooredInBerth:
+            return "Moored in berth"
+        case .alongsideDock:
+            return "Moored alongside dock"
+        case .fingerBerth:
+            return "Moored in finger berth"
+        case .double:
+            return "Double moored"
+        case .raftedUp:
+            return "Rafted up"
+        case .bowAndStern:
+            return "Moored with bow & stern lines"
+        case .dryingOut:
+            return "Drying out / taking the ground"
+        case .other:
+            return "Moored"
+        case .none:
+            return "Mooring cleared"
+        }
+    }
+
+    private func inferredZone(for mooring: MooringType) -> NavZone? {
+        switch mooring {
+        case .atAnchor, .AnchorAndStern, .twoAnchors:
+            return .anchorage
+
+        case .mooringBall, .chainMooring, .mooredOnBuoy, .mooredForeAndAft:
+            return .buoyField
+
+        case .mooredSternOn, .mooredInBerth, .fingerBerth, .alongsideDock,
+             .double, .raftedUp, .mooredPiles,
+             .mooredMedAnchor, .mooredMedLine, .mooredMedBow,
+             .bowAndStern, .dryingOut:
+            return .harbour
+
+        case .other, .none:
+            return nil
         }
     }
 
@@ -265,10 +322,12 @@ final class InstanceLogHandler {
     func pointOfSailChanged(from old: PointOfSail, to newVal: PointOfSail) {
         guard let trip = instances.currentTrip else { return }
         if old == .stopped {
-            writer.writeMerged(trip: trip, instances: instances, stack: stack,
-                            header: "Boat on \(newVal.rawValue) on tack \(instances.tack.rawValue)")
+            let pos = newVal.displayString
+            let tack = instances.tack.displayString
+            writer.writeMerged(trip: trip, instances: instances, stack: stack, header:"Boat on \(pos) (\(tack))")
             return
         }
+        
         let order: [PointOfSail] = [.closeHauled, .closeReach, .beamReach,
                                     .broadReach, .running, .deadRun, .stopped]
         let oi = order.firstIndex(of: old) ?? 0
