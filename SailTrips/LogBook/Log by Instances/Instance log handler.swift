@@ -367,6 +367,14 @@ final class InstanceLogHandler {
             log.TWS = newVal
         }
     }
+    
+    func pressureChanged(to newVal: Float) {
+        enqueueDelta(key: "baro",
+                     label: "pressure is",
+                     value: "\(newVal) hPa") { log in
+            log.pressure = newVal
+        }
+    }
 
     func windDirectionChanged(to newVal: Int) {
         enqueueDelta(key: "TWD",

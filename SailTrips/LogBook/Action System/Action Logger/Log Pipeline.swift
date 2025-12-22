@@ -8,6 +8,8 @@
 import Foundation
 import CoreLocation
 import SwiftData
+import CoreMotion
+
 
 // MARK: - ActionLogPipeline
 enum ActionLogPipeline {
@@ -21,7 +23,9 @@ enum ActionLogPipeline {
         var awaDeg: Int?
         var twsKn: Int?
         var twdDeg: Int?
+        var pressureHpa: Float?
     }
+
 
     struct PositionStamp {
         let date: Date
@@ -80,6 +84,11 @@ enum ActionLogPipeline {
             instances: ctx.instances,
             nmea: ctx.nmeaSnapshot()
         )
+        // 6b) Barometric pressure from iPhone (always refresh if available)
+        if let p = await PressureReader.readHpaOnce() {
+            fix.pressureHpa = p
+            ctx.instances.pressure = p
+        }
         // --- Sailing geometry sanity policy (AWA noise after strategic actions) ---
         if let variant,
            variant.impliesCourseChange == false
@@ -352,6 +361,8 @@ private extension ActionLogPipeline {
     }
 }
 
+
+
 // MARK: - Bearing discrepancy policy (COG vs magHeading)
 private extension ActionLogPipeline {
 
@@ -414,6 +425,9 @@ private extension ActionLogPipeline {
         }
         if let awa = fix.awaDeg {
             stack.enqueue(key: "AWAfix", text: "") { log in log.AWA = awa }
+        }
+        if let p = fix.pressureHpa {
+            stack.enqueue(key: "BAROfix", text: "") { log in log.pressure = p }
         }
         if let tws = fix.twsKn {
             stack.enqueue(key: "TWSfix", text: "") { log in log.TWS = tws }

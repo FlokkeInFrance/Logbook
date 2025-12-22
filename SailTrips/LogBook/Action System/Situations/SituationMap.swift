@@ -388,7 +388,7 @@ extension ActionRegistry {
                     "A29", "A29R", "A30", "A30R", "A31", "A31R", "A32", "A32R", "A28", // Sail plan
                     "A39", "A40", "A43", "A44", "A41", "A42", // AWA, shape
                     "A25", "A25R", "A26",             // Steering
-                    "A27R", "A17", "A18",             // Storm manoeuvres
+                    "A27R", "A17", "A18","A51",           // Storm manoeuvres
                     "A45", "A46", "A47", "A48",       // Storm tactics
                     "A20",                            // Improving conditions
                     "A19"                             // Clear storm
@@ -405,10 +405,10 @@ extension ActionRegistry {
                 "A29", "A29R", "A30", "A30R",
                 "A31", "A31R", "A32", "A32R", "A28", // Sail plan
                 "A39", "A40", "A43", "A44",     // AWA
-                "A41", "A42",  "A27W", "A27WR",                  // Sail shape
+                "A41", "A42",  "A27W", "A27WR", // Sail shape
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36", // Reef
-                "A25", "A25R", "A26",           // Steering
-                "A16",                          // Approach
+                "A25", "A25R", "A26","A51",      // Steering
+                "A16",                           // Approach
                 "A3", "A5", "A4", "A6"          // Motor regime
             ]
         ),
@@ -425,7 +425,7 @@ extension ActionRegistry {
                 "A33R", "A33F", "A34", "A35F", "A35R", "A36",
                 "A39", "A40", "A43", "A44",
                 "A41", "A42", "A27W", "A27WR",
-                "A25", "A25R", "A26",
+                "A25", "A25R", "A26","A51",
                 "A16",
                 "A3", "A5", "A4", "A6"
             ]

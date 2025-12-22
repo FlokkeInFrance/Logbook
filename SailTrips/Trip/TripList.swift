@@ -90,10 +90,22 @@ struct TripListView: View {
             // Trips list
             List(filteredTrips, id: \ .id, selection: $newTrip) { trip in
                 VStack(alignment: .leading, spacing: 4) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(trip.dateOfStart, style: .date)
-                        Text("- \(trip.tripType.rawValue)")
+
+                        Text(trip.tripType.displayString)
+                            .foregroundStyle(.secondary)
+
+                        if trip.tripType == .test {
+                            Text("TEST")
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(.thinMaterial)
+                                .clipShape(Capsule())
+                        }
                     }
+
                     Text("From \(trip.startPlace?.Name ?? "a place") to \(trip.destination?.Name ?? "another place")")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
@@ -109,7 +121,15 @@ struct TripListView: View {
                     selectedTrip = trip
                     showTripActions = true
                 }
-
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    if trip.tripType == .test {
+                        Button(role: .destructive) {
+                            deleteTrip(trip)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                }
             }
         }
         .alert(isPresented: $showCruiseMatchAlert) {
@@ -131,7 +151,7 @@ struct TripListView: View {
                 }
             }
             Button("Trip details") {
-                if let id = selectedTrip?.id {
+                if (selectedTrip?.id) != nil {
                     navPath.path.append(HomePageNavigation.tripDetails)
                 }
             }
@@ -173,6 +193,23 @@ struct TripListView: View {
             print(error)
         }
     }
+    
+    // Delete only dummy trips, ie made to test the UI !
+    
+    private func deleteTrip(_ trip: Trip) {
+        // Safety gate: never delete “real” trips
+        guard trip.tripType == .test else { return }
+
+        // If someone ever deletes the current trip (should be rare from history),
+        // keep Instances consistent.
+        if instances.currentTrip?.id == trip.id {
+            instances.currentTrip = nil
+        }
+
+        modelContext.delete(trip)
+        try? modelContext.save()
+    }
+
 
 }
 

@@ -12,10 +12,13 @@
 
 import Foundation
 import SwiftData
+import SwiftUI
+
+// MARK: - Requests
 
 struct ActionConfirmRequest: Identifiable, Sendable {
     let id = UUID()
-    
+
     let title: String
     let message: String
     let confirmTitle: String
@@ -40,53 +43,102 @@ struct NavSensorsSnapshot: Sendable {
     var twd: Int?
     var tws: Int?
     var magHeading: Int?
-    // (extend later when you wire more PGNs/sentences)
+    // extend later
 }
 
-// ActnContext.swift
+// MARK: - ActionContext
 
-struct ActionContext {
+/// Important: must be a class (ObservableObject) because we publish sheet requests.
+@MainActor
+final class ActionContext: ObservableObject {
+
+    // Core dependencies / environment
     let instances: Instances
     let currentSettings: () -> LogbookSettings
     let modelContext: ModelContext
+
+    // UI / routing callbacks
     let showBanner: (String) -> Void
     let openDangerSheet: (ActionVariant) -> Void
     let presentTextPrompt: (ActionTextPromptRequest) -> Void
     let presentConfirm: (ActionConfirmRequest) -> Void
     let openSailingGeometrySheet: (ActionVariant) -> Void
+
+    // Services
     let positionUpdater: PositionUpdater?
 
-    /// NEW: last known NMEA snapshot
+    /// last known NMEA snapshot provider
     let nmeaSnapshot: () -> NMEASnapshot?
+    let presentSeaAnchorPrompt: (ActionChoicePromptRequest<SeaAnchorDeployment>) -> Void
+    let presentSteeringPrompt: (ActionChoicePromptRequest<Steering>) -> Void
 
     init(
         instances: Instances,
         modelContext: ModelContext,
-        currentSettings: @escaping () -> LogbookSettings = { LogbookSettings()},
+        currentSettings: @escaping () -> LogbookSettings = { LogbookSettings() },
         showBanner: @escaping (String) -> Void,
         openDangerSheet: @escaping (ActionVariant) -> Void,
         presentTextPrompt: @escaping (ActionTextPromptRequest) -> Void = { _ in },
         presentConfirm: @escaping (ActionConfirmRequest) -> Void = { _ in },
         openSailingGeometrySheet: @escaping (ActionVariant) -> Void,
         positionUpdater: PositionUpdater? = nil,
-        nmeaSnapshot: @escaping () -> NMEASnapshot? = { nil }
+        nmeaSnapshot: @escaping () -> NMEASnapshot? = { nil },
+        presentSeaAnchorPrompt: @escaping (ActionChoicePromptRequest<SeaAnchorDeployment>) -> Void = { _ in },
+        presentSteeringPrompt: @escaping (ActionChoicePromptRequest<Steering>) -> Void = { _ in },
+         
     ) {
         self.instances = instances
         self.modelContext = modelContext
+        self.currentSettings = currentSettings
+
         self.showBanner = showBanner
         self.openDangerSheet = openDangerSheet
         self.presentTextPrompt = presentTextPrompt
         self.presentConfirm = presentConfirm
-        self.positionUpdater = positionUpdater
         self.openSailingGeometrySheet = openSailingGeometrySheet
-        self.nmeaSnapshot = nmeaSnapshot
-        self.currentSettings = currentSettings
-    }
-}
+        self.presentSeaAnchorPrompt = presentSeaAnchorPrompt
+        self.presentSteeringPrompt = presentSteeringPrompt
 
-extension ActionContext {
-    /// Shows a generic single-line text prompt and returns the result.
-    /// - Returns: `nil` if user cancelled. Empty string if allowed and user left it blank.
+        self.positionUpdater = positionUpdater
+        self.nmeaSnapshot = nmeaSnapshot
+    }
+
+    // MARK: - Published sheet requests (Choice prompts)
+
+
+    // MARK: - Async prompts
+
+    func promptSeaAnchorDeployment(default def: SeaAnchorDeployment = .bow) async -> SeaAnchorDeployment? {
+        await withCheckedContinuation { cont in
+            let req = ActionChoicePromptRequest(
+                title: "Sea anchor deployment",
+                message: "Was the sea anchor deployed from the bow (default) or from the stern?",
+                choices: SeaAnchorDeployment.allCases,
+                choiceLabel: { $0.displayString },
+                defaultChoice: def,
+                completion: { choice in cont.resume(returning: choice) }
+            )
+            self.presentSeaAnchorPrompt(req)
+        }
+    }
+
+    func promptSteering(default def: Steering = .byHand) async -> Steering? {
+        await withCheckedContinuation { cont in
+            let req = ActionChoicePromptRequest(
+                title: "Steering",
+                message: "Select the steering method to use in these conditions.",
+                choices: Steering.allCases,
+                choiceLabel: { $0.displayString },
+                defaultChoice: def,
+                completion: { choice in cont.resume(returning: choice) }
+            )
+            self.presentSteeringPrompt(req)
+        }
+    }
+
+    // MARK: - Existing prompts
+
+    /// Generic single-line prompt (already uses presenter closure, so no @Published needed).
     func promptSingleLine(
         title: String,
         message: String? = nil,
@@ -105,12 +157,10 @@ extension ActionContext {
                 continuation.resume(returning: result)
             }
 
-            presentTextPrompt(request)
+            self.presentTextPrompt(request)
         }
     }
-}
 
-extension ActionContext {
     func confirm(
         title: String,
         message: String,
@@ -126,7 +176,8 @@ extension ActionContext {
             ) { result in
                 continuation.resume(returning: result)
             }
-            presentConfirm(req)
+
+            self.presentConfirm(req)
         }
     }
 }

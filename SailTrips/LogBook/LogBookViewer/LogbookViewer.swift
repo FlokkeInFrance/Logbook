@@ -199,16 +199,19 @@ private struct LogDetailView: View {
             }
 
             Section("Weather & sea") {
-                if show(.pressure), log.pressure > 0 { row("Pressure", String(format: "%.0f hPa", log.pressure)) }
-                if show(.TWS), log.TWS != 0 { row("True wind speed", "\(log.TWS) kt") }
-                if show(.TWD), log.TWD != 0 { row("True wind direction", "\(log.TWD)°") }
-                if show(.windGust), log.windGust > 0 { row("Gusts", String(format: "%.0f kt", log.windGust)) }
-                if show(.windForce), log.windForce != 0 { row("Wind force", "\(log.windForce) Bft") }
-                if show(.airTemp), log.airTemp != 0 { row("Air temperature", "\(log.airTemp)°C") }
-                if show(.waterTemp), log.waterTemp != 0 { row("Water temperature", "\(log.waterTemp)°C") }
+                if show(.pressure), log.pressure > 500 {
+                    row("Pressure", String(format: "%.0f hPa", log.pressure))
+                }
+                
+                if show(.TWS) { row("True wind speed", "\(log.TWS) kt") }
+                if show(.TWD) { row("True wind direction", "\(log.TWD)°") }
+                if show(.windGust) { row("Gusts", String(format: "%.0f kt", log.windGust)) }
+                if show(.windForce) { row("Wind force", "\(log.windForce) Bft") }
+                if show(.airTemp) { row("Air temperature", "\(log.airTemp)°C") }
+                if show(.waterTemp) { row("Water temperature", "\(log.waterTemp)°C") }
                 if show(.seaState), !log.seaState.isEmpty { row("Sea state", log.seaState) }
                 if show(.cloudCover), !log.cloudCover.isEmpty { row("Cloud cover", log.cloudCover) }
-                if show(.precipitation), log.precipitation != .none {
+                if show(.precipitation) {
                     row("Precipitation", friendlyLabel(from: log.precipitation.rawValue))
                 }
                 if show(.severeWeather), log.severeWeather != .none {
@@ -218,13 +221,13 @@ private struct LogDetailView: View {
             }
 
             Section("Sails & propulsion") {
-                if show(.propulsion), log.propulsion != .none {
+                if show(.propulsion) {
                     row("Propulsion", friendlyLabel(from: log.propulsion.rawValue))
                 }
                 if show(.pointOfSail), !log.pointOfSail.isEmpty { row("Point of sail", log.pointOfSail) }
                 if show(.tack) { row("Tack", friendlyLabel(from: log.tack.rawValue))}
-                if show(.AWA), log.AWA != 0 { row("Apparent wind angle", "\(log.AWA)°") }
-                if show(.AWS), log.AWS != 0 { row("Apparent wind speed", "\(log.AWS) kt") }
+                if show(.AWA) { row("Apparent wind angle", "\(log.AWA)°") }
+                if show(.AWS) { row("Apparent wind speed", "\(log.AWS) kt") }
                 if show(.steering) { row("Steering", friendlyLabel(from: log.steering.rawValue)) }
             }
         }

@@ -40,6 +40,7 @@ struct TripCompanionView: View {
     @State private var showStartSelector = false
     @State private var showDestinationSelector = false
     @State private var showWeatherDesciption: Bool = false
+    @State private var showChecklistPicker = false
 
     @State private var showTankLevels = false
     @State private var showTankLayout = false
@@ -58,7 +59,10 @@ struct TripCompanionView: View {
     var body: some View {
         
         Button("Run a Checklist") {
-            navPath.path.append(HomePageNavigation.runChecklist)
+            showChecklistPicker = true
+        }
+        .sheet(isPresented: $showChecklistPicker) {
+                ChecklistPickerView(instances: instances)
         }
         .font(.headline)
         .frame(maxWidth: .infinity)
@@ -101,6 +105,20 @@ struct TripCompanionView: View {
                     }
                 }
                 
+                GroupBox(label: Text("Trip Type").font(.headline)) {
+                    Picker("Type", selection: Binding(
+                        get: { instances.currentTrip?.tripType ?? .roundTrip },
+                        set: { newValue in
+                            instances.currentTrip?.tripType = newValue
+                            try? modelContext.save()
+                        }
+                    )) {
+                        ForEach(TypeOfTrip.allCases) { t in
+                            Text(t.displayString).tag(t)
+                        }
+                    }
+                    .pickerStyle(.menu) // or .segmented let's see
+                }
                 // Date & Status with +/- clamp logic
                 GroupBox(label: Text("Date & Status").font(.headline)) {
                     HStack {
@@ -124,18 +142,6 @@ struct TripCompanionView: View {
                         Spacer()
                         Text("Status: \(instances.currentTrip?.tripStatus.rawValue ?? "-")")
                         Spacer()
-                        /*if Date.now.isSame(thisTrip?.dateOfStart ?? Date.now){
-                            Button("Go"){
-                                thisTrip!.tripStatus = .underway
-                                instances.odometerForTrip = 0
-                            }
-                        }
-                        if Date.now.isAfterOrSame(thisTrip?.dateOfStart ?? Date.now) {
-                            Button("End Trip") {
-                                thisTrip!.tripStatus = .completed
-                                instances.currentTrip = nil
-                            }
-                        }*/
                     }
                 }
                 
@@ -272,15 +278,31 @@ struct TripCompanionView: View {
                 GroupBox(label: Text("Conditions").font(.headline)) {
                     HStack {
                         NumberField(label: "Pressure in hPa:", inData: $instances.pressure)
-                        .frame(width: 300)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                            .frame(width: 300)
+
+                        Button {
+                            Task { @MainActor in
+                                if let p = await PressureReader.readHpaOnce() {
+                                    instances.pressure = p
+                                    try? modelContext.save()
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "gauge")
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Read pressure from iPhone barometer")
                     }
-                    // TODO: Weather description view
+
                     Button("Define Weather") {
                         showWeatherDesciption = true
                     }
                     .sheet(isPresented: $showWeatherDesciption){
-                        WeatherView(instances: instances)
+                        WeatherView(
+                            updateTripStartFields: true,
+                            ctx: nil,
+                            instances: instances,
+                        )
                     }
                     Text("Current Weather conditions :")
                     TextEditor(text: Binding(

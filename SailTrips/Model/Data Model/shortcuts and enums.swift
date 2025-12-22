@@ -504,6 +504,7 @@ enum TypeOfTrip: String, Codable, CaseIterable, Identifiable {
     case legOfCruise = "cruise leg"
     case toDestination = "trip to destination"
     case regatta = "regatta"
+    case test = "learn logTrips"
     var id: String { rawValue }
     var displayString: String { rawValue }
 
@@ -658,18 +659,18 @@ enum LandmarkCategory: String, Codable, CaseIterable, Identifiable {
     case island = "island"
     case cliffside = "cliffside"
     case rockface = "rockface"
-    case seaStack = "sea_stack"
-    case seaCave = "sea_cave"
-    case seaCrest = "sea_crest"
+    case seaStack = "sea stack" //pilier ou stack
+    case seaCave = "sea cave"
+    case seaCrest = "sea crest"
     case church = "church"
     case lighthouse = "lighthouse"
-    case remarkableBuilding = "remarkable_building"
-    case riverMound = "river_mound"
+    case remarkableBuilding = "remarkable building"
+    case riverMound = "river mound"
     case buoy = "buoy"
     case cape = "cape"
     case estuary = "estuary"
-    case namedStructure = "named_structure"
-    case cove = "cove"
+    case namedStructure = "named structure"
+    case cove = "cove" //ie calanque, cala etc
     case transit = "transit" //alignement
     var id: String { rawValue }
     var displayString: String { rawValue }

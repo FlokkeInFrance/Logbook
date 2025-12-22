@@ -3,692 +3,1285 @@
 //  SailTrips
 //
 //  Created by jeroen kok on 21/04/2025.
+//  V2 created on 21/12/2025 with the help of ChatGPT 5.2
+//
+//
+//
+//  ChecklistEditorV2.swift
+//  SailTrips
+//
+//  Modern inline editor for ChecklistHeader/Section/Item with collapsible option panels,
+//  draft-first creation (no DB writes until Save), inline add rows, swipe actions,
+//  and Expand/Collapse all.
+//
+//  POLISH:
+//  - "Next" / Return advances focus (draft + existing)
+//  - Existing checklists show a subtle unsaved-dot + explicit Save when needed
 //
 
 import SwiftUI
 import SwiftData
 
-struct ChecklistEditor: View {
-    
-    @Bindable var header: ChecklistHeader
+// MARK: - Public host
 
-    @EnvironmentObject var active: activations
-    @EnvironmentObject var navPath: PathManager
+struct ChecklistEditorV2Host: View {
+    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.editMode) private var editMode
 
-    @StateObject private var clipboard = Clipboard()
-    @State private var newSectionName: String = ""
-    @State private var newItemName: String = ""
-    @State private var showAddSectionDialog: Bool = false
-    @State private var showAddItemDialog: Bool = false
-    @State private var canContinue: Bool = false
-    @State private var folded: Bool = false
-    @State private var showDeleteConfirmation = false
-    @State private var foldedStates: [UUID: Bool] = [:]
-    @State private var deletionChoice: SectionDeletionChoice?
+    let boat: Boat
+    let existingHeader: ChecklistHeader?
 
-    enum SectionDeletionChoice: Identifiable {
-        case cancel, sectionOnly, sectionAndItems
-        var id: Int { hashValue }
+    // Draft state (only used when existingHeader == nil)
+    @State private var draft = DraftHeader.makeEmpty()
+    @State private var showDiscardAlert = false
+    @State private var showValidationAlert = false
+    @State private var validationMessage: String = ""
+
+    // Fold state is UI-only (not in model)
+    @State private var expandedIDs: Set<UUID> = []
+    @State private var expandAll: Bool = false
+
+    // Edit mode enables drag reorder
+    @State private var editMode: EditMode = .inactive
+
+    // Focus handling
+    @FocusState private var focusDraft: FocusDraftField?
+    @FocusState private var focusExisting: FocusExistingField?
+
+    init(boat: Boat, existingHeader: ChecklistHeader? = nil) {
+        self.boat = boat
+        self.existingHeader = existingHeader
     }
 
     var body: some View {
-        Text ("Edit Checklist: \(header.name)")
-            .font(.title3)
-        List {
-            ForEach(header.sections.sorted(by: { $0.orderNum < $1.orderNum }), id: \.id) { section in
-              Section(header: sectionHeaderView(for: section)) {
-                  innerContent(for: section)
-              }
-            } //end of checklist forEach : enumeration of sections
-            .onMove(perform: moveSection)
-        } //end of List
-        .listStyle(.plain)
-        .onAppear {
-            if header.sections.isEmpty {
-                newSectionName = "Main Section"
-                addSection()
-                newSectionName  = ""
-                header.completed = false
+        Group {
+            if let header = existingHeader {
+                ChecklistEditorV2Existing(
+                    header: header,
+                    expandedIDs: $expandedIDs,
+                    expandAll: $expandAll,
+                    editMode: $editMode,
+                    focusExisting: $focusExisting
+                )
+            } else {
+                ChecklistEditorV2Draft(
+                    boat: boat,
+                    draft: $draft,
+                    expandedIDs: $expandedIDs,
+                    expandAll: $expandAll,
+                    editMode: $editMode,
+                    focusDraft: $focusDraft,
+                    onCancelRequested: {
+                        if draft.isEffectivelyEmpty {
+                            dismiss()
+                        } else {
+                            showDiscardAlert = true
+                        }
+                    },
+                    onSaveRequested: {
+                        doSaveDraft()
+                    }
+                )
             }
-            header.sections.sort(by: { $0.orderNum < $1.orderNum })
-            header.completed = false
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .environment(\.editMode, $editMode)
+        .toolbar {
+            // Leading close
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Close") {
+                    if existingHeader != nil {
+                        // For existing: just dismiss (edits may still be pending; user can Save explicitly)
+                        dismiss()
+                    } else {
+                        if draft.isEffectivelyEmpty { dismiss() }
+                        else { showDiscardAlert = true }
+                    }
+                }
+            }
+
+            // Center title with subtle unsaved dot (existing only)
+            if let header = existingHeader {
+                ToolbarItem(placement: .principal) {
+                    HStack(spacing: 6) {
+                        Text(header.name.isEmpty ? "Checklist" : header.name)
+                            .lineLimit(1)
+
+                        if modelContext.hasChanges {
+                            Text("•")
+                                .font(.title3)
+                                .baselineOffset(1)
+                                .accessibilityLabel("Unsaved changes")
+                        }
+                    }
+                }
+            } else {
+                ToolbarItem(placement: .principal) {
+                    Text(draft.name.isEmpty ? "New checklist" : draft.name)
+                        .lineLimit(1)
+                }
+            }
+
+            // Trailing controls
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    toggleExpandAll()
+                } label: {
+                    Image(systemName: expandAll ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                }
+                .accessibilityLabel(expandAll ? "Collapse all" : "Expand all")
+
+                // Explicit Save for EXISTING only (appears when needed)
+                if existingHeader != nil, modelContext.hasChanges {
+                    Button("Save") {
+                        try? modelContext.save()
+                    }
+                }
+
+                EditButton()
+            }
+
+            // Draft-only bottom bar
+            if existingHeader == nil {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button("Cancel", role: .cancel) {
+                        if draft.isEffectivelyEmpty { dismiss() }
+                        else { showDiscardAlert = true }
+                    }
+
+                    Spacer()
+
+                    Button("Save") {
+                        doSaveDraft()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+            }
+        }
+        .alert("Discard changes?", isPresented: $showDiscardAlert) {
+            Button("Discard", role: .destructive) { dismiss() }
+            Button("Continue Editing", role: .cancel) { }
+        } message: {
+            Text("This checklist hasn’t been saved yet.")
+        }
+        .alert("Can’t save yet", isPresented: $showValidationAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text(validationMessage)
+        }
+        .onAppear {
+            if existingHeader == nil {
+                expandAll = false
+                expandedIDs = [
+                    draft.id,
+                    draft.sections.first?.id ?? UUID(),
+                    draft.sections.first?.items.first?.id ?? UUID()
+                ]
+                focusDraft = .headerName(draft.id)
+            } else {
+                expandAll = false
+                expandedIDs = []
+            }
+        }
+    }
+
+    // MARK: - Expand/collapse helpers
+
+    private func toggleExpandAll() {
+        expandAll.toggle()
+
+        if let header = existingHeader {
+            if expandAll {
+                var all: Set<UUID> = [header.id]
+                for s in header.sections.sorted(by: { $0.orderNum < $1.orderNum }) {
+                    all.insert(s.id)
+                    for i in s.items.sorted(by: { $0.itemNumber < $1.itemNumber }) {
+                        all.insert(i.id)
+                    }
+                }
+                expandedIDs = all
+            } else {
+                expandedIDs.removeAll()
+            }
+        } else {
+            if expandAll {
+                var all: Set<UUID> = [draft.id]
+                for s in draft.sections {
+                    all.insert(s.id)
+                    for i in s.items {
+                        all.insert(i.id)
+                    }
+                }
+                expandedIDs = all
+            } else {
+                expandedIDs.removeAll()
+            }
+        }
+    }
+
+    // MARK: - Draft saving
+
+    private func doSaveDraft() {
+        draft.normalizeNumbers()
+
+        let trimmedName = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmedName.isEmpty {
+            validationMessage = "Please enter a name for the checklist."
+            showValidationAlert = true
+            focusDraft = .headerName(draft.id)
+            return
+        }
+        if draft.sections.isEmpty {
+            validationMessage = "Please add at least one section."
+            showValidationAlert = true
+            return
         }
 
-        .toolbar {
+        let badSection = draft.sections.first(where: { $0.nameOfSection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })
+        if let badSection {
+            validationMessage = "Please enter a name for each section."
+            showValidationAlert = true
+            focusDraft = .sectionName(badSection.id)
+            return
+        }
 
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    showAddSectionDialog = true
-                } label: {
-                    Text("+Section")
+        let newHeader = ChecklistHeader(boat: boat)
+        newHeader.name = trimmedName
+        newHeader.emergencyCL = draft.emergencyCL
+        newHeader.alwaysShow = draft.alwaysShow
+        newHeader.conditionalShow = draft.conditionalShow
+        newHeader.canBeLogged = draft.canBeLogged
+        newHeader.wait24Hours = draft.wait24Hours
+        newHeader.latestRunDate = draft.latestRunDate
+        newHeader.forAllBoats = false
+
+        modelContext.insert(newHeader)
+
+        for (sIndex, dSection) in draft.sections.enumerated() {
+            let section = ChecklistSection(orderNum: sIndex, header: newHeader)
+            section.nameOfSection = dSection.nameOfSection
+            section.fontColor = dSection.fontColor
+            modelContext.insert(section)
+            newHeader.sections.append(section)
+
+            for (iIndex, dItem) in dSection.items.enumerated() {
+                let item = ChecklistItem(itemNumber: iIndex, checklistSection: section)
+                item.itemShortText = dItem.itemShortText
+                item.itemLongText = dItem.itemLongText
+                item.itemNormalCheck = dItem.itemNormalCheck
+                item.textAlt1 = dItem.textAlt1
+                item.textAlt2 = dItem.textAlt2
+                item.choiceAlt1 = dItem.choiceAlt1
+                item.altCheckList = nil
+                modelContext.insert(item)
+                section.items.append(item)
+            }
+        }
+
+        try? modelContext.save()
+        dismiss()
+    }
+
+
+// MARK: - Existing checklist editor (live SwiftData editing)
+
+    private struct ChecklistEditorV2Existing: View {
+    @Environment(\.modelContext) private var modelContext
+
+    let header: ChecklistHeader
+    @Binding var expandedIDs: Set<UUID>
+    @Binding var expandAll: Bool
+    @Binding var editMode: EditMode
+
+    @FocusState.Binding var focusExisting: FocusExistingField?
+
+    var body: some View {
+        List {
+            headerBlock
+            
+            ForEach(sortedSections, id: \.id) { section in
+                Section {
+                    sectionRow(section)
+                    
+                    if isExpanded(section.id) {
+                        sectionOptions(section)
+                    }
+                    
+                    ForEach(sortedItems(in: section), id: \.id) { item in
+                        itemRow(item)
+                        
+                        if isExpanded(item.id) {
+                            itemOptions(item)
+                        }
+                    }
+                    .onMove { indices, newOffset in
+                        moveItems(in: section, from: indices, to: newOffset)
+                    }
+                    
+                    Button {
+                        let newID = addItem(to: section)
+                        //expandedIDs.insert(newID) //put it back if finally it is better to have new item expanded
+                        focusExisting = .itemShort(newID)
+                    } label: {
+                        Label("Add item", systemImage: "plus.circle")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .onMove(perform: moveSections)
+            
+            Button {
+                let newID = addSection()
+                expandedIDs.insert(newID)
+                focusExisting = .sectionName(newID)
+            } label: {
+                Label("Add section", systemImage: "plus.circle")
+            }
+            .buttonStyle(.plain)
+            .onChange(of: focusExisting) { old, new in
+                handleFocusChange(old: old, new: new)
+            }
+            .scrollDismissesKeyboard(.immediately)
+        }
+    }// End of existing editor
+
+    // MARK: Header UI
+
+    private var headerBlock: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                expandChevron(id: header.id)
+                TextField("Checklist name…", text: bindingHeaderName)
+                    .submitLabel(.next)
+                    .onSubmit {
+                        if let first = sortedSections.first {
+                            expandedIDs.insert(first.id)
+                            focusExisting = .sectionName(first.id)
+                        }
+                    }
+                    .focused($focusExisting, equals: .headerName(header.id))
+                    .textInputAutocapitalization(.sentences)
+            }
+
+            if isExpanded(header.id) {
+                headerOptions
+            }
+        }
+        .padding(.vertical, 6)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                modelContext.delete(header)
+                try? modelContext.save()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+    }
+
+    private var bindingHeaderName: Binding<String> {
+        Binding(
+            get: { header.name },
+            set: { header.name = $0 }
+        )
+    }
+
+    private var headerOptions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Emergency checklist", isOn: Binding(get: { header.emergencyCL }, set: { header.emergencyCL = $0 }))
+            Toggle("Always show", isOn: Binding(get: { header.alwaysShow }, set: { header.alwaysShow = $0 }))
+            Picker("Show only when", selection: Binding(get: { header.conditionalShow }, set: { header.conditionalShow = $0 })) {
+                Text("None").tag(NavStatus.none)
+                ForEach(NavStatus.allCases, id: \.self) { st in
+                    Text(st.displayString).tag(st)
+                }
+            }
+            Toggle("Can be logged", isOn: Binding(get: { header.canBeLogged }, set: { header.canBeLogged = $0 }))
+            Toggle("Hide for 24h after completion", isOn: Binding(get: { header.wait24Hours }, set: { header.wait24Hours = $0 }))
+        }
+        .font(.subheadline)
+        .padding(.leading, 28)
+        .padding(.top, 4)
+    }
+
+    // MARK: Section UI
+
+    private func sectionRow(_ section: ChecklistSection) -> some View {
+        HStack(spacing: 10) {
+            expandChevron(id: section.id)
+
+            TextField("Section name…", text: Binding(
+                get: { section.nameOfSection },
+                set: { section.nameOfSection = $0 }
+            ))
+            .focused($focusExisting, equals: .sectionName(section.id))
+            .submitLabel(.next)
+            .onSubmit {
+                expandedIDs.insert(section.id)
+                if let firstItem = sortedItems(in: section).first {
+                    expandedIDs.insert(firstItem.id)
+                    focusExisting = .itemShort(firstItem.id)
+                } else {
+                    let newID = addItem(to: section)
+                    //expandedIDs.insert(newID)
+                    focusExisting = .itemShort(newID)
+                }
+            }
+            .textInputAutocapitalization(.sentences)
+
+            Spacer()
+
+            Circle()
+                .fill(section.fontColor.swiftUIColor)
+                .frame(width: 10, height: 10)
+                .opacity(0.9)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                deleteSection(section)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                duplicateSection(section)
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
+        }
+    }
+
+    private func sectionOptions(_ section: ChecklistSection) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Picker("Color", selection: Binding(get: { section.fontColor }, set: { section.fontColor = $0 })) {
+                ForEach(SectionColors.allCases, id: \.self) { c in
+                    Text(c.rawValue.capitalized).tag(c)
                 }
             }
 
-            ToolbarItem() {
-                Button{
-                    EditElement()
-                } label: {
-                    Text("Edit")
-                }
+            Button(role: .destructive) {
+                deleteSection(section)
+            } label: {
+                Label("Delete section", systemImage: "trash")
+            }
+        }
+        .font(.subheadline)
+        .padding(.leading, 28)
+        .padding(.top, 2)
+    }
+
+    // MARK: Item UI
+
+    private func itemRow(_ item: ChecklistItem) -> some View {
+        HStack(spacing: 10) {
+            expandChevron(id: item.id)
+
+            TextField("New item…", text: Binding(
+                get: { item.itemShortText },
+                set: { item.itemShortText = $0 }
+            ))
+            .focused($focusExisting, equals: .itemShort(item.id))
+            .submitLabel(.next)
+            .onSubmit {
+                let section = item.checklistSection
+                let newID = addItem(to: section)
+                //expandedIDs.insert(section.id)
+                //expandedIDs.insert(newID) put back if it is better to have items expanded
+                focusExisting = .itemShort(newID)
+            }
+            .textInputAutocapitalization(.sentences)
+
+            Spacer()
+
+            if !item.itemNormalCheck {
+                Text("ALT")
+                    .font(.caption2)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.thinMaterial)
+                    .clipShape(Capsule())
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button(role: .destructive) {
+                deleteItem(item)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                duplicateItem(item)
+            } label: {
+                Label("Duplicate", systemImage: "doc.on.doc")
+            }
+        }
+    }
+
+    private func itemOptions(_ item: ChecklistItem) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Toggle("Normal check", isOn: Binding(
+                get: { item.itemNormalCheck },
+                set: { item.itemNormalCheck = $0 }
+            ))
+
+            if item.itemNormalCheck {
+                TextField("Long text (optional)…", text: Binding(
+                    get: { item.itemLongText },
+                    set: { item.itemLongText = $0 }
+                ), axis: .vertical)
+                .lineLimit(2...6)
+            } else {
+                TextField("Alt 1 text…", text: Binding(get: { item.textAlt1 }, set: { item.textAlt1 = $0 }))
+                TextField("Alt 2 text…", text: Binding(get: { item.textAlt2 }, set: { item.textAlt2 = $0 }))
+                Toggle("Default choice: Alt 1", isOn: Binding(get: { item.choiceAlt1 }, set: { item.choiceAlt1 = $0 }))
             }
 
-            ToolbarItem(placement: .navigationBarTrailing) {
+            Button(role: .destructive) {
+                deleteItem(item)
+            } label: {
+                Label("Delete item", systemImage: "trash")
+            }
+        }
+        .font(.subheadline)
+        .padding(.leading, 28)
+        .padding(.top, 2)
+    }
+
+    // MARK: Expand helpers
+
+    private func isExpanded(_ id: UUID) -> Bool { expandedIDs.contains(id) }
+
+    @ViewBuilder
+    private func expandChevron(id: UUID) -> some View {
+        Button {
+            if isExpanded(id) { expandedIDs.remove(id) }
+            else { expandedIDs.insert(id) }
+        } label: {
+            Image(systemName: isExpanded(id) ? "chevron.down" : "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(width: 18)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: Sorting
+
+    private var sortedSections: [ChecklistSection] {
+        header.sections.sorted(by: { $0.orderNum < $1.orderNum })
+    }
+
+    private func sortedItems(in section: ChecklistSection) -> [ChecklistItem] {
+        section.items.sorted(by: { $0.itemNumber < $1.itemNumber })
+    }
+
+    // MARK: Mutations
+
+    @discardableResult
+    private func addSection() -> UUID {
+        let nextOrder = (sortedSections.last?.orderNum ?? -1) + 1
+        let s = ChecklistSection(orderNum: nextOrder, header: header)
+        s.nameOfSection = ""
+        s.fontColor = .blue
+        modelContext.insert(s)
+        header.sections.append(s)
+        renumberSections()
+        try? modelContext.save()
+        return s.id
+    }
+
+    private func deleteSection(_ section: ChecklistSection) {
+        modelContext.delete(section)
+        renumberSections()
+        try? modelContext.save()
+    }
+
+    private func duplicateSection(_ section: ChecklistSection) {
+        let nextOrder = (sortedSections.last?.orderNum ?? -1) + 1
+        let copy = ChecklistSection(orderNum: nextOrder, header: header)
+        copy.nameOfSection = section.nameOfSection
+        copy.fontColor = section.fontColor
+        modelContext.insert(copy)
+        header.sections.append(copy)
+
+        let items = sortedItems(in: section)
+        for (idx, it) in items.enumerated() {
+            let newItem = ChecklistItem(itemNumber: idx, checklistSection: copy)
+            newItem.itemShortText = it.itemShortText
+            newItem.itemLongText = it.itemLongText
+            newItem.itemNormalCheck = it.itemNormalCheck
+            newItem.textAlt1 = it.textAlt1
+            newItem.textAlt2 = it.textAlt2
+            newItem.choiceAlt1 = it.choiceAlt1
+            modelContext.insert(newItem)
+            copy.items.append(newItem)
+        }
+
+        renumberSections()
+        try? modelContext.save()
+    }
+
+    @discardableResult
+    private func addItem(to section: ChecklistSection) -> UUID {
+        let next = (sortedItems(in: section).last?.itemNumber ?? -1) + 1
+        let item = ChecklistItem(itemNumber: next, checklistSection: section)
+        item.itemShortText = ""
+        modelContext.insert(item)
+        section.items.append(item)
+        renumberItems(in: section)
+        try? modelContext.save()
+        return item.id
+    }
+
+    private func deleteItem(_ item: ChecklistItem) {
+        let section = item.checklistSection
+        modelContext.delete(item)
+        renumberItems(in: section)
+        try? modelContext.save()
+    }
+
+    private func duplicateItem(_ item: ChecklistItem) {
+        let section = item.checklistSection
+        let next = (sortedItems(in: section).last?.itemNumber ?? -1) + 1
+        let copy = ChecklistItem(itemNumber: next, checklistSection: section)
+        copy.itemShortText = item.itemShortText
+        copy.itemLongText = item.itemLongText
+        copy.itemNormalCheck = item.itemNormalCheck
+        copy.textAlt1 = item.textAlt1
+        copy.textAlt2 = item.textAlt2
+        copy.choiceAlt1 = item.choiceAlt1
+        modelContext.insert(copy)
+        section.items.append(copy)
+        renumberItems(in: section)
+        try? modelContext.save()
+    }
+
+    private func moveSections(from source: IndexSet, to destination: Int) {
+        var arr = sortedSections
+        arr.move(fromOffsets: source, toOffset: destination)
+        for (i, s) in arr.enumerated() { s.orderNum = i }
+        try? modelContext.save()
+    }
+
+    private func moveItems(in section: ChecklistSection, from source: IndexSet, to destination: Int) {
+        var arr = sortedItems(in: section)
+        arr.move(fromOffsets: source, toOffset: destination)
+        for (i, it) in arr.enumerated() { it.itemNumber = i }
+        try? modelContext.save()
+    }
+
+    private func renumberSections() {
+        let arr = sortedSections
+        for (i, s) in arr.enumerated() { s.orderNum = i }
+    }
+
+    private func renumberItems(in section: ChecklistSection) {
+        let arr = sortedItems(in: section)
+        for (i, it) in arr.enumerated() { it.itemNumber = i }
+    }
+    
+    private func findItem(by id: UUID) -> ChecklistItem? {
+        for s in header.sections {
+            if let it = s.items.first(where: { $0.id == id }) { return it }
+        }
+        return nil
+    }
+    
+    private func handleFocusChange(old: FocusExistingField?, new: FocusExistingField?) {
+        // If we are leaving an itemShort field, decide whether to delete it.
+        guard case .itemShort(let oldID) = old else { return }
+        // If focus stays on same item, do nothing.
+        if case .itemShort(let newID) = new, newID == oldID { return }
+        
+        guard let item = findItem(by: oldID) else { return }
+        
+        // Only delete if it’s empty
+        guard item.isEffectivelyEmpty else { return }
+        
+        // Optionally: avoid deleting the only item in a section (keeps a placeholder row).
+        let section = item.checklistSection
+        if section.items.count <= 1 {
+            // keep one placeholder item; just ensure it’s blank
+            item.itemShortText = ""
+            item.itemLongText = ""
+            item.textAlt1 = ""
+            item.textAlt2 = ""
+            try? modelContext.save()
+            return
+        }
+        
+        // Dismiss keyboard first (clearing focus)
+        focusExisting = nil
+        
+        // Delete & renumber
+        modelContext.delete(item)
+        renumberItems(in: section)
+        try? modelContext.save()
+    }
+}
+
+// MARK: - Draft checklist editor (no DB writes until Save)
+
+    private struct ChecklistEditorV2Draft: View {
+        let boat: Boat
+        
+        @Binding var draft: DraftHeader
+        @Binding var expandedIDs: Set<UUID>
+        @Binding var expandAll: Bool
+        @Binding var editMode: EditMode
+        
+        @FocusState.Binding var focusDraft: FocusDraftField?
+        
+        let onCancelRequested: () -> Void
+        let onSaveRequested: () -> Void
+        
+        var body: some View {
+            List {
+                draftHeaderBlock
+                
+                ForEach(draft.sections) { section in
+                    Section {
+                        draftSectionRow(section)
+                        
+                        if isExpanded(section.id) {
+                            draftSectionOptions(section)
+                        }
+                        
+                        ForEach(section.items) { item in
+                            draftItemRow(sectionID: section.id, item: item)
+                            
+                            if isExpanded(item.id) {
+                                draftItemOptions(sectionID: section.id, item: item)
+                            }
+                        }
+                        .onMove { indices, newOffset in
+                            moveDraftItems(sectionID: section.id, from: indices, to: newOffset)
+                        }
+                        
+                        Button {
+                            let newID = addDraftItem(to: section.id)
+                            //expandedIDs.insert(newID)
+                            focusDraft = .itemShort(newID)
+                        } label: {
+                            Label("Add item", systemImage: "plus.circle")
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .onMove(perform: moveDraftSections)
+                
                 Button {
-                    showAddItemDialog = true
+                    let newID = addDraftSection()
+                    expandedIDs.insert(newID)
+                    focusDraft = .sectionName(newID)
                 } label: {
-                    Text("+Item")
+                    Label("Add section", systemImage: "plus.circle")
+                }
+                .buttonStyle(.plain)
+            }
+            .onChange(of: focusDraft) { old, new in
+                handleDraftFocusChange(old: old, new: new)
+            }
+            .scrollDismissesKeyboard(.immediately)
+        }
+        
+        
+        // MARK: Draft header UI
+        
+        private var draftHeaderBlock: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    expandChevron(id: draft.id)
+                    TextField("Checklist name…", text: $draft.name)
+                        .focused($focusDraft, equals: .headerName(draft.id))
+                        .submitLabel(.next)
+                        .onSubmit {
+                            if let firstSection = draft.sections.first {
+                                expandedIDs.insert(firstSection.id)
+                                focusDraft = .sectionName(firstSection.id)
+                            } else {
+                                let newID = addDraftSection()
+                                expandedIDs.insert(newID)
+                                focusDraft = .sectionName(newID)
+                            }
+                        }
+                        .textInputAutocapitalization(.sentences)
+                }
+                
+                if isExpanded(draft.id) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Toggle("Emergency checklist", isOn: $draft.emergencyCL)
+                        Toggle("Always show", isOn: $draft.alwaysShow)
+                        Picker("Show only when", selection: $draft.conditionalShow) {
+                            Text("None").tag(NavStatus.none)
+                            ForEach(NavStatus.allCases, id: \.self) { st in
+                                Text(st.displayString).tag(st)
+                            }
+                        }
+                        Toggle("Can be logged", isOn: $draft.canBeLogged)
+                        Toggle("Hide for 24h after completion", isOn: $draft.wait24Hours)
+                    }
+                    .font(.subheadline)
+                    .padding(.leading, 28)
+                    .padding(.top, 4)
                 }
             }
-
-            ToolbarItem() {
-                Button {
-                    DeleteElement()
+            .padding(.vertical, 6)
+        }
+        
+        private func handleDraftFocusChange(old: FocusDraftField?, new: FocusDraftField?) {
+            guard case .itemShort(let oldID) = old else { return }
+            if case .itemShort(let newID) = new, newID == oldID { return }
+            
+            // Find where it lives
+            for sIdx in draft.sections.indices {
+                if let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == oldID }) {
+                    let item = draft.sections[sIdx].items[iIdx]
+                    guard item.isEffectivelyEmpty else { return }
+                    
+                    // Optional: keep a placeholder if it's the last one
+                    if draft.sections[sIdx].items.count <= 1 {
+                        // keep one placeholder (blank)
+                        draft.sections[sIdx].items[iIdx] = DraftItem.makeEmpty(itemNumber: 0)
+                        draft.normalizeNumbers()
+                        return
+                    }
+                    
+                    // Dismiss keyboard, delete row
+                    focusDraft = nil
+                    draft.sections[sIdx].items.remove(at: iIdx)
+                    draft.normalizeNumbers()
+                    return
+                }
+            }
+        }
+        // MARK: Draft section UI
+        
+        private func draftSectionRow(_ section: DraftSection) -> some View {
+            HStack(spacing: 10) {
+                expandChevron(id: section.id)
+                
+                TextField("Section name…", text: bindingSectionName(section.id))
+                    .focused($focusDraft, equals: .sectionName(section.id))
+                    .submitLabel(.next)
+                    .onSubmit {
+                        expandedIDs.insert(section.id)
+                        if let firstItem = draft.sections.first(where: { $0.id == section.id })?.items.first {
+                            expandedIDs.insert(firstItem.id)
+                            focusDraft = .itemShort(firstItem.id)
+                        } else {
+                            let newID = addDraftItem(to: section.id)
+                            expandedIDs.insert(newID)
+                            focusDraft = .itemShort(newID)
+                        }
+                    }
+                    .textInputAutocapitalization(.sentences)
+                
+                Spacer()
+                
+                Circle()
+                    .fill(section.fontColor.swiftUIColor)
+                    .frame(width: 10, height: 10)
+                    .opacity(0.9)
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    deleteDraftSection(section.id)
                 } label: {
                     Label("Delete", systemImage: "trash")
                 }
             }
-            
-            ToolbarItem(placement: .navigationBarTrailing) {
-              Menu {
-                Button("Cut",   action: cutAction)
-                  .disabled(active.activeItem == nil && active.activeSection == nil)
-                Button("Copy",  action: copyAction)
-                  .disabled(active.activeItem == nil && active.activeSection == nil)
-                Button("Paste", action: pasteAction)
-                  .disabled(clipboard.entry == nil)
-                Button("Undo",  action: undoAction)
-                  .disabled(!clipboard.lastActionWasCut)
-              } label: {
-                Label("Edit Clipboard", systemImage: "doc.on.clipboard")
-              }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    duplicateDraftSection(section.id)
+                } label: {
+                    Label("Duplicate", systemImage: "doc.on.doc")
+                }
             }
-
-        }//end of toolbar
-        .alert("Add Section", isPresented: $showAddSectionDialog) {
-            TextField("Section Name", text: $newSectionName)
-            Button("Add", action: addSection)
-            Button("Cancel", role: .cancel) {}
         }
-        .alert("Add Item", isPresented: $showAddItemDialog) {
-            TextField("Item to add", text : $newItemName)
-            Button("Add", action: addItem)
-            Button("Cancel", role: .cancel) {}
-        }
-        .alert("Delete Item?", isPresented: $showDeleteConfirmation) {
-            Button("Delete", role: .destructive) {
-                deleteSelectedItem()
+        
+        private func draftSectionOptions(_ section: DraftSection) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Color", selection: bindingSectionColor(section.id)) {
+                    ForEach(SectionColors.allCases, id: \.self) { c in
+                        Text(c.rawValue.capitalized).tag(c)
+                    }
+                }
+                
+                Button(role: .destructive) {
+                    deleteDraftSection(section.id)
+                } label: {
+                    Label("Delete section", systemImage: "trash")
+                }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Are you sure you want to delete this item?")
+            .font(.subheadline)
+            .padding(.leading, 28)
+            .padding(.top, 2)
         }
-        .actionSheet(item: $deletionChoice) { _ in
-            ActionSheet(
-                title: Text("Delete Section"),
-                message: Text("Choose how you'd like to delete the section:"),
-                buttons: [
-                    .destructive(Text("Section and Items")) {
-                        deleteSelectedSection(sectionOnly: false)
-                    },
-                    .destructive(Text("Section Only (Move Items to Previous)")) {
-                        deleteSelectedSection(sectionOnly: true)
-                    },
-                    .cancel()
-                ]
+        
+        // MARK: Draft item UI
+        
+        private func draftItemRow(sectionID: UUID, item: DraftItem) -> some View {
+            HStack(spacing: 10) {
+                expandChevron(id: item.id)
+                
+                TextField("New item…", text: bindingItemShortText(sectionID: sectionID, itemID: item.id))
+                    .focused($focusDraft, equals: .itemShort(item.id))
+                    .submitLabel(.next)
+                    .onSubmit {
+                        // Notes/Reminders-style: Return creates the next item in the same section
+                        let newID = addDraftItem(to: sectionID)
+                        //expandedIDs.insert(sectionID)
+                        //expandedIDs.insert(newID)
+                        focusDraft = .itemShort(newID)
+                    }
+                    .textInputAutocapitalization(.sentences)
+                
+                Spacer()
+                
+                if !item.itemNormalCheck {
+                    Text("ALT")
+                        .font(.caption2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(.thinMaterial)
+                        .clipShape(Capsule())
+                }
+            }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    deleteDraftItem(sectionID: sectionID, itemID: item.id)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                Button {
+                    duplicateDraftItem(sectionID: sectionID, itemID: item.id)
+                } label: {
+                    Label("Duplicate", systemImage: "doc.on.doc")
+                }
+            }
+        }
+        
+        private func draftItemOptions(sectionID: UUID, item: DraftItem) -> some View {
+            VStack(alignment: .leading, spacing: 10) {
+                Toggle("Normal check", isOn: bindingItemNormal(sectionID: sectionID, itemID: item.id))
+                
+                if item.itemNormalCheck {
+                    TextField("Long text (optional)…",
+                              text: bindingItemLongText(sectionID: sectionID, itemID: item.id),
+                              axis: .vertical)
+                    .lineLimit(2...6)
+                } else {
+                    TextField("Alt 1 text…", text: bindingItemAlt1(sectionID: sectionID, itemID: item.id))
+                    TextField("Alt 2 text…", text: bindingItemAlt2(sectionID: sectionID, itemID: item.id))
+                    Toggle("Default choice: Alt 1", isOn: bindingItemChoiceAlt1(sectionID: sectionID, itemID: item.id))
+                }
+                
+                Button(role: .destructive) {
+                    deleteDraftItem(sectionID: sectionID, itemID: item.id)
+                } label: {
+                    Label("Delete item", systemImage: "trash")
+                }
+            }
+            .font(.subheadline)
+            .padding(.leading, 28)
+            .padding(.top, 2)
+        }
+        
+        // MARK: Expand helpers
+        
+        private func isExpanded(_ id: UUID) -> Bool { expandedIDs.contains(id) }
+        
+        @ViewBuilder
+        private func expandChevron(id: UUID) -> some View {
+            Button {
+                if isExpanded(id) { expandedIDs.remove(id) }
+                else { expandedIDs.insert(id) }
+            } label: {
+                Image(systemName: isExpanded(id) ? "chevron.down" : "chevron.right")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+            }
+            .buttonStyle(.plain)
+        }
+        
+        // MARK: Draft mutations
+        
+        @discardableResult
+        private func addDraftSection() -> UUID {
+            draft.sections.append(DraftSection.makeEmpty(orderNum: draft.sections.count))
+            draft.normalizeNumbers()
+            return draft.sections.last?.id ?? UUID()
+        }
+        
+        private func deleteDraftSection(_ id: UUID) {
+            draft.sections.removeAll(where: { $0.id == id })
+            draft.normalizeNumbers()
+        }
+        
+        private func duplicateDraftSection(_ id: UUID) {
+            guard let idx = draft.sections.firstIndex(where: { $0.id == id }) else { return }
+            let original = draft.sections[idx]
+            var copy = original
+            copy.id = UUID()
+            copy.items = original.items.map { it in
+                var c = it
+                c.id = UUID()
+                return c
+            }
+            draft.sections.insert(copy, at: idx + 1)
+            draft.normalizeNumbers()
+        }
+        
+        @discardableResult
+        private func addDraftItem(to sectionID: UUID) -> UUID {
+            guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return UUID() }
+            draft.sections[sIdx].items.append(DraftItem.makeEmpty(itemNumber: draft.sections[sIdx].items.count))
+            draft.normalizeNumbers()
+            return draft.sections[sIdx].items.last?.id ?? UUID()
+        }
+        
+        private func deleteDraftItem(sectionID: UUID, itemID: UUID) {
+            guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+            draft.sections[sIdx].items.removeAll(where: { $0.id == itemID })
+            draft.normalizeNumbers()
+        }
+        
+        private func duplicateDraftItem(sectionID: UUID, itemID: UUID) {
+            guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+            guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+            var copy = draft.sections[sIdx].items[iIdx]
+            copy.id = UUID()
+            draft.sections[sIdx].items.insert(copy, at: iIdx + 1)
+            draft.normalizeNumbers()
+        }
+        
+        private func moveDraftSections(from source: IndexSet, to destination: Int) {
+            draft.sections.move(fromOffsets: source, toOffset: destination)
+            draft.normalizeNumbers()
+        }
+        
+        private func moveDraftItems(sectionID: UUID, from source: IndexSet, to destination: Int) {
+            guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+            draft.sections[sIdx].items.move(fromOffsets: source, toOffset: destination)
+            draft.normalizeNumbers()
+        }
+        
+        // MARK: Draft bindings (unchanged)
+        
+        private func bindingSectionName(_ sectionID: UUID) -> Binding<String> {
+            Binding(
+                get: { draft.sections.first(where: { $0.id == sectionID })?.nameOfSection ?? "" },
+                set: { newValue in
+                    guard let idx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    draft.sections[idx].nameOfSection = newValue
+                }
             )
-        }//end of actionSheet
-        //end of List modifiers
-    }//end of body view
-    
-    //Functions and functionnalities
-    
-    private func sectionHeaderView(for section: ChecklistSection) -> some View {
-      HStack {
-        Text(section.nameOfSection)
-          .font(.headline)
-          .foregroundStyle(section.fontColor.swiftUIColor)
-          .background(active.activeSection == section ? Color.gray.opacity(0.35) : Color.gray.opacity(0.12))
-          
-        Spacer()
-        Image(systemName: foldedStates[section.id, default: false]
-              ? "chevron.down"
-              : "chevron.up")
-      }
-      .contentShape(Rectangle())
-      .onTapGesture {
-          if active.activeSection == section {
-              foldedStates[section.id, default: false].toggle()
-              active.activeItem = nil
-          } else {
-              if let previousSection = active.activeSection {
-                  cleanupEmptyItems(in: previousSection)
-              }
-              active.activeItem = nil
-              active.activeSection = section
-          }
-      }
-    }
-    
-    private func innerContent(for section: ChecklistSection) -> some View {
-        Group {
-          if !foldedStates[section.id, default: false] {
-            ForEach(section.items.sorted(by: { $0.itemNumber < $1.itemNumber })) { item in
-              Text(item.itemShortText)
-                    .onTapGesture {
-                        active.activeItem = item
-                        active.activeSection = section
-                    }
-                    .background(active.activeItem == item ? Color.blue.opacity(0.2) : Color.clear)
-                    .padding(.leading, 10)
-            }
-            .onMove(perform: moveItem)
-
-            if active.activeSection == section {
-              TextField("new item…", text: $newItemName)
-                .padding(.leading, 10)
-                .onSubmit(addItem)
-            }
-          }
-        }
-      }
-    
-    func EditElement(){
-        if active.activeItem == nil {
-            if !(active.activeSection == nil) {
-                navPath.path.append(ChecklistNav.sectiondetail)
-            }
-        }
-        else{
-            navPath.path.append(ChecklistNav.itemdetail)
-        }
-    }
-    
-    func DeleteElement() {
-        if active.activeItem != nil {
-            // Deleting an item directly
-            showDeleteConfirmation = true
-        } else if active.activeSection != nil {
-            // Deleting a section: present choices
-            deletionChoice = .cancel // Triggers actionSheet
-        }
-    }
-
-    func deleteSelectedItem() {
-        guard let item = active.activeItem,
-              let section = active.activeSection,
-              let index = section.items.firstIndex(of: item)
-        else {
-            print ("couldn't delete item")
-            return }
-
-        section.items.remove(at: index)
-        modelContext.delete(item)
-
-        try? modelContext.save()
-        active.activeItem = nil
-    }
-    
-    func deleteSelectedSection(sectionOnly: Bool) {
-        guard let sectionToDelete = active.activeSection else {return}
-        let header = sectionToDelete.header // as? ChecklistHeader else { return }
-
-        if sectionOnly {
-            // Check if it's not the first section
-            guard sectionToDelete.orderNum > 1 else { return }
-            
-            // Find the previous section
-            if let previousSection = header.sections.filter({ $0.orderNum == sectionToDelete.orderNum - 1 }).first {
-                // Move items to previous section
-                for item in sectionToDelete.items {
-                    item.checklistSection = previousSection
-                    item.itemNumber += previousSection.items.count
-                    previousSection.items.append(item)
-                }
-                sectionToDelete.items.removeAll()
-            }//items are displaced
-        }
-        // Update the order numbers of subsequent sections
-        for sec in header.sections where sec.orderNum > sectionToDelete.orderNum {
-            sec.orderNum -= 1
-        }
-
-        // Delete the section
-        if let index = header.sections.firstIndex(of: sectionToDelete) {
-            header.sections.remove(at: index)
-        }
-        modelContext.delete(sectionToDelete)
-        try? modelContext.save()
-        
-        // Update active selection
-        active.activeItem = nil
-        active.activeSection = header.sections.filter { $0.orderNum == sectionToDelete.orderNum - 1 }.first
-    }
-    
-    private func cleanupEmptyItems(in section: ChecklistSection) {
-        // Remove empty items
-        section.items
-            .filter { $0.itemShortText.trimmingCharacters(in: .whitespaces).isEmpty }
-            .forEach { item in
-                if let index = section.items.firstIndex(of: item) {
-                    section.items.remove(at: index)
-                    modelContext.delete(item)
-                }
-            }
-        // Renumber remaining items correctly
-        let sortedItems = section.items.sorted { $0.itemNumber < $1.itemNumber }
-        for (index, item) in sortedItems.enumerated() {
-            item.itemNumber = index + 1
-        }
-        // Save changes to your data context
-        try? modelContext.save()
-    } // end of cleanUpEmpty Items
-    
-    private func addItem() {
-        //Cases : item selected, add after this one
-        //        section and no item : add at the end of the section
-        //        nothing selected : add at the end of the list
-        let trimmedName = newItemName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else { return }
-        newItemName = ""
-        
-        if active.activeSection == nil {//nothing is selected, try to find and select last section
-            if !header.sections.isEmpty {
-                var lastSection = header.sections.first!
-                for section in header.sections {
-                    if section.orderNum > lastSection.orderNum {
-                        lastSection = section
-                    }
-                }
-                active.activeSection = lastSection
-                active.activeItem = nil
-               
-            }
-            else {
-                print ("Error in checklist header sections")
-                return
-            }
         }
         
-        let newItem =  ChecklistItem(itemNumber: 1,checklistSection: active.activeSection!)
-        newItem.itemShortText = trimmedName
-        //first case : there is a selected item
-        if let thisItem = active.activeItem {
-            guard let section = active.activeSection else { return }
-            let nb = thisItem.itemNumber
-            for item in section.items {
-                if item.itemNumber > nb {
-                    item.itemNumber += 1
+        private func bindingSectionColor(_ sectionID: UUID) -> Binding<SectionColors> {
+            Binding(
+                get: { draft.sections.first(where: { $0.id == sectionID })?.fontColor ?? .blue },
+                set: { newValue in
+                    guard let idx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    draft.sections[idx].fontColor = newValue
                 }
-            }
-            newItem.itemNumber = nb+1
-            active.activeSection?.items.append(newItem)
-            active.activeItem = newItem
-            try? modelContext.save()
-            return
-        }
-        //2nd case : there is a selected section but not a selected item
-        if let thissection = active.activeSection {
-            newItem.itemNumber = thissection.items.count + 1
-            thissection.items.append(newItem)
-            active.activeItem = newItem
-            try? modelContext.save()
-            return
-        }
-    }// end of addItem function
-
-    
-    func addSection() {
-        guard !newSectionName.isEmpty else { return }
-        //cases : (1) an item, and thus a section is selected : add a section after the currentsd, append all items after this one to the new section
-        //       (2) a section is selected : add a new empty section after the current
-        //       (3) nothing is selected : append a new empty section
-        //       (4) last section is selected : append a new empty section
-        
-        let newSection = ChecklistSection(orderNum: 1, header: header)
-        newSection.nameOfSection = newSectionName
-        newSectionName = ""
-        
-        if let oldItem = active.activeItem {
-            //case (1)add a new section after the current one, and add all items following the current one
-            // to the new section
-            if let oldActive = active.activeSection{
-                for sections in header.sections{
-                    if sections.orderNum > oldActive.orderNum{
-                        sections.orderNum = sections.orderNum + 1
-                    }
-                }
-                newSection.orderNum = oldActive.orderNum + 1
-                header.sections.append(newSection)
-                //going to append items to new section
-                let offset = oldItem.itemNumber
-                for item in oldActive.items{
-                    if item.itemNumber > offset{
-                        item.checklistSection = newSection
-                        item.itemNumber = item.itemNumber - offset
-                        newSection.items.append(item)
-                    }
-                }
-                if !newSection.items.isEmpty{
-                    for item in newSection.items{
-                        oldActive.items.remove(at: oldActive.items.firstIndex(of: item)!)
-                    }
-                }
-                active.activeItem = nil
-                active.activeSection = newSection
-                try? modelContext.save()
-            }
-            return
-        }
-        if (active.activeSection == nil ||
-            active.activeSection?.orderNum == header.sections.count){
-            //append a new section at the end of the checklist case (3) and (4)
-            newSection.orderNum = header.sections.count + 1
-            header.sections.append(newSection)
-            active.activeItem = nil
-            active.activeSection = newSection
-            try? modelContext.save()
-        }
-        else{
-            // case (2)
-            let oldActive = active.activeSection!
-            for sections in header.sections{
-                if sections.orderNum > oldActive.orderNum{
-                    sections.orderNum = sections.orderNum + 1
-                }
-            }
-            
-            newSection.orderNum = oldActive.orderNum + 1
-            header.sections.append(newSection)
-            active.activeItem = nil
-            active.activeSection = newSection
-            try? modelContext.save()
-        } // Reset section name after adding
-    }
-    
-    func moveSection(from source: IndexSet, to destination: Int) {
-        header.sections.move(fromOffsets: source, toOffset: destination)
-        // Update order numbers after moving sections
-        for (index, section) in header.sections.enumerated() {
-            section.orderNum = index + 1
-        }
-        try? modelContext.save()
-    }
-
-    private func moveItem(from source: IndexSet, to destination: Int) {
-        if let section = active.activeSection{
-            var sortedItems = section.items.sorted(by: { $0.itemNumber < $1.itemNumber })
-            
-            sortedItems.move(fromOffsets: source, toOffset: destination)
-            
-            for (index, item) in sortedItems.enumerated() {
-                item.itemNumber = index + 1
-            }
-            
-            try? modelContext.save()
-        }
-    }
-    
-    // 1️⃣COPY
-    func copyAction() {
-      guard !(active.activeSection == nil && active.activeItem == nil) else { return }
-        
-      clipboard.lastActionWasCut = false
-
-      if let item = active.activeItem {
-        let data = ChecklistItemData(
-          itemShortText: item.itemShortText,
-          itemLongText:  item.itemLongText,
-          itemNormalCheck: item.itemNormalCheck,
-          textAlt1: item.textAlt1,
-          textAlt2: item.textAlt2
-        )
-        let sectionOrder = item.checklistSection.orderNum
-        let index = item.checklistSection.items.firstIndex(of: item)!
-        clipboard.entry = .item(data: data,
-                                originalSectionOrder: sectionOrder,
-                                originalIndex: index)
-
-      } else if let section = active.activeSection {
-        let itemsData = section.items
-          .sorted(by: { $0.itemNumber < $1.itemNumber })
-          .map { itm in
-            ChecklistItemData(
-              itemShortText: itm.itemShortText,
-              itemLongText:  itm.itemLongText,
-              itemNormalCheck: itm.itemNormalCheck,
-              textAlt1: itm.textAlt1,
-              textAlt2: itm.textAlt2
             )
-          }
-        let index = header.sections.firstIndex(of: section)!
-        clipboard.entry = .section(
-          name: section.nameOfSection,
-          fontColor: section.fontColor,
-          items: itemsData,
-          originalIndex: index
-        )
-      }
-    }
-
-    // 2️⃣ CUT
-    func cutAction() {
-    guard !(active.activeSection == nil && active.activeItem == nil) else { return }
+        }
         
-      copyAction()
-      clipboard.lastActionWasCut = true
-
-      if let item = active.activeItem {
-        // remove the model object
-        let section = item.checklistSection
-        section.items.removeAll { $0.id == item.id }
-        modelContext.delete(item)
-
-      } else if let section = active.activeSection {
-        header.sections.removeAll { $0.id == section.id }
-        modelContext.delete(section)
-      }
-
-      // re-number everything
-      for (i, sec) in header.sections.enumerated() {
-        sec.orderNum = i + 1
-      }
-
-      active.activeItem = nil
-      active.activeSection = nil
-      try? modelContext.save()
-    }
-
-    // 3️⃣ PASTE
-    func pasteAction() {
-      guard let entry = clipboard.entry else { return }
-      clipboard.lastActionWasCut = false
-
-      switch entry {
-      case let .item(data, _, _):
-        // decide target section + position
-        let targetSection: ChecklistSection
-        let insertIndex: Int
-
-        if let selItem = active.activeItem {
-          targetSection = selItem.checklistSection
-          insertIndex = targetSection.items.firstIndex(of: selItem)! + 1
-
-        } else if let selSection = active.activeSection {
-          targetSection = selSection
-          insertIndex = selSection.items.count
-
-        } else {
-          // no selection: last section
-          targetSection = header.sections.last!
-          insertIndex = targetSection.items.count
+        private func bindingItemShortText(sectionID: UUID, itemID: UUID) -> Binding<String> {
+            Binding(
+                get: {
+                    draft.sections.first(where: { $0.id == sectionID })?
+                        .items.first(where: { $0.id == itemID })?.itemShortText ?? ""
+                },
+                set: { newValue in
+                    guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+                    draft.sections[sIdx].items[iIdx].itemShortText = newValue
+                }
+            )
         }
-
-        let newItem = ChecklistItem(itemNumber: insertIndex+1,
-                                    checklistSection: targetSection)
-        newItem.itemShortText = data.itemShortText
-        newItem.itemLongText  = data.itemLongText
-        newItem.itemNormalCheck = data.itemNormalCheck
-        newItem.textAlt1 = data.textAlt1
-        newItem.textAlt2 = data.textAlt2
-
-        targetSection.items.insert(newItem, at: insertIndex)
-        // renumber
-        for (i, itm) in targetSection.items.enumerated() {
-          itm.itemNumber = i + 1
+        
+        private func bindingItemLongText(sectionID: UUID, itemID: UUID) -> Binding<String> {
+            Binding(
+                get: {
+                    draft.sections.first(where: { $0.id == sectionID })?
+                        .items.first(where: { $0.id == itemID })?.itemLongText ?? ""
+                },
+                set: { newValue in
+                    guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+                    draft.sections[sIdx].items[iIdx].itemLongText = newValue
+                }
+            )
         }
-
-      case let .section(name, fontColor, itemsData, _)://_ was origIndex
-        // decide insertion index
-        let insertIndex: Int
-        if let selSection = active.activeSection,
-           let idx = header.sections.firstIndex(of: selSection) {
-          insertIndex = idx + 1
-        } else {
-          insertIndex = header.sections.count
+        
+        private func bindingItemNormal(sectionID: UUID, itemID: UUID) -> Binding<Bool> {
+            Binding(
+                get: {
+                    draft.sections.first(where: { $0.id == sectionID })?
+                        .items.first(where: { $0.id == itemID })?.itemNormalCheck ?? true
+                },
+                set: { newValue in
+                    guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+                    draft.sections[sIdx].items[iIdx].itemNormalCheck = newValue
+                }
+            )
         }
-
-        let newSection = ChecklistSection(orderNum: insertIndex+1,
-                                          header: header)
-        newSection.nameOfSection = name
-        newSection.fontColor = fontColor
-
-        // clone its items
-        for (i, data) in itemsData.enumerated() {
-          let itm = ChecklistItem(itemNumber: i+1,
-                                  checklistSection: newSection)
-          itm.itemShortText = data.itemShortText
-          itm.itemLongText  = data.itemLongText
-          itm.itemNormalCheck = data.itemNormalCheck
-          itm.textAlt1 = data.textAlt1
-          itm.textAlt2 = data.textAlt2
-          newSection.items.append(itm)
+        
+        private func bindingItemAlt1(sectionID: UUID, itemID: UUID) -> Binding<String> {
+            Binding(
+                get: {
+                    draft.sections.first(where: { $0.id == sectionID })?
+                        .items.first(where: { $0.id == itemID })?.textAlt1 ?? ""
+                },
+                set: { newValue in
+                    guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+                    draft.sections[sIdx].items[iIdx].textAlt1 = newValue
+                }
+            )
         }
-
-        header.sections.insert(newSection, at: insertIndex)
-        // renumber all
-        for (i, sec) in header.sections.enumerated() {
-          sec.orderNum = i + 1
+        
+        private func bindingItemAlt2(sectionID: UUID, itemID: UUID) -> Binding<String> {
+            Binding(
+                get: {
+                    draft.sections.first(where: { $0.id == sectionID })?
+                        .items.first(where: { $0.id == itemID })?.textAlt2 ?? ""
+                },
+                set: { newValue in
+                    guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+                    draft.sections[sIdx].items[iIdx].textAlt2 = newValue
+                }
+            )
         }
-      }
-      // after paste, clear selection & save
-      active.activeItem = nil
-      active.activeSection = nil
-      try? modelContext.save()
-    }
-
-    // 4️⃣ UNDO (only restores the last cut)
-    func undoAction() {
-      guard clipboard.lastActionWasCut,
-            let entry = clipboard.entry else { return }
-
-      switch entry {
-      case let .item(data, sectionOrder, index):
-        // re-insert the cut item
-        let targetSection = header.sections.first { $0.orderNum == sectionOrder }!
-        let itm = ChecklistItem(itemNumber: index+1,
-                                 checklistSection: targetSection)
-        itm.itemShortText  = data.itemShortText
-        itm.itemLongText   = data.itemLongText
-        itm.itemNormalCheck = data.itemNormalCheck
-        itm.textAlt1 = data.textAlt1
-        itm.textAlt2 = data.textAlt2
-        targetSection.items.insert(itm, at: index)
-        for (i, it) in targetSection.items.enumerated() {
-          it.itemNumber = i + 1
+        
+        private func bindingItemChoiceAlt1(sectionID: UUID, itemID: UUID) -> Binding<Bool> {
+            Binding(
+                get: {
+                    draft.sections.first(where: { $0.id == sectionID })?
+                        .items.first(where: { $0.id == itemID })?.choiceAlt1 ?? true
+                },
+                set: { newValue in
+                    guard let sIdx = draft.sections.firstIndex(where: { $0.id == sectionID }) else { return }
+                    guard let iIdx = draft.sections[sIdx].items.firstIndex(where: { $0.id == itemID }) else { return }
+                    draft.sections[sIdx].items[iIdx].choiceAlt1 = newValue
+                }
+            )
         }
-
-      case let .section(name, fontColor, itemsData, origIndex):
-        let newSection = ChecklistSection(orderNum: origIndex+1,
-                                          header: header)
-        newSection.nameOfSection = name
-        newSection.fontColor = fontColor
-        for (i, data) in itemsData.enumerated() {
-          let itm = ChecklistItem(itemNumber: i+1,
-                                  checklistSection: newSection)
-          itm.itemShortText  = data.itemShortText
-          itm.itemLongText   = data.itemLongText
-          itm.itemNormalCheck = data.itemNormalCheck
-          itm.textAlt1 = data.textAlt1
-          itm.textAlt2 = data.textAlt2
-          newSection.items.append(itm)
-        }
-        header.sections.insert(newSection, at: origIndex)
-        for (i, sec) in header.sections.enumerated() {
-          sec.orderNum = i + 1
-        }
-      }
-
-      clipboard.lastActionWasCut = false
-      active.activeItem = nil
-      active.activeSection = nil
-      try? modelContext.save()
-    }
-
-}// End of ChecklistEditor
-
-//Detail views
-
-struct ChecklistItemDetailView: View {
-
-    @EnvironmentObject var active: activations
-    @Environment(\.modelContext) private var modelContext
-
+    } // ✅ end ChecklistEditorV2Draft
     
-    var body: some View {
-        if let anItem = Binding($active.activeItem) {
-            Form {
-                    Text("Item Details")
-                    TextField("Short Text", text: anItem.itemShortText)
-                    TextField("Long Text", text: anItem.itemLongText)
-                    Toggle("Normal Check", isOn: anItem.itemNormalCheck)
-                if !anItem.itemNormalCheck.wrappedValue {
-                        TextField("Alt 1", text: anItem.textAlt1)
-                        TextField("Alt 2", text: anItem.textAlt2)
+    // MARK: - Draft models
+    
+    private struct DraftHeader: Identifiable {
+        var id: UUID = UUID()
+        
+        var name: String = ""
+        
+        var emergencyCL: Bool = false
+        var alwaysShow: Bool = true
+        var conditionalShow: NavStatus = .none
+        var canBeLogged: Bool = true
+        var latestRunDate: Date = .distantPast
+        var wait24Hours: Bool = false
+        
+        var sections: [DraftSection] = []
+        
+        static func makeEmpty() -> DraftHeader {
+            var h = DraftHeader()
+            h.sections = [DraftSection.makeEmpty(orderNum: 0)]
+            return h
+        }
+        
+        mutating func normalizeNumbers() {
+            for (sIdx, _) in sections.enumerated() {
+                sections[sIdx].orderNum = sIdx
+                for (iIdx, _) in sections[sIdx].items.enumerated() {
+                    sections[sIdx].items[iIdx].itemNumber = iIdx
                 }
             }
-                .onDisappear {
-                if anItem.itemShortText.wrappedValue == "" {
-                    anItem.itemShortText.wrappedValue = "Item"
-                }
-                try? modelContext.save() }
         }
+        
+        var isEffectivelyEmpty: Bool {
+            let nameEmpty = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let allSectionsEmpty = sections.allSatisfy { $0.isEffectivelyEmpty }
+            return nameEmpty && allSectionsEmpty
+        }
+    }
+    
+    private struct DraftSection: Identifiable {
+        var id: UUID = UUID()
+        var orderNum: Int = 0
+        var nameOfSection: String = ""
+        var fontColor: SectionColors = .blue
+        var items: [DraftItem] = []
+        
+        static func makeEmpty(orderNum: Int) -> DraftSection {
+            var s = DraftSection()
+            s.orderNum = orderNum
+            s.items = [DraftItem.makeEmpty(itemNumber: 0)]
+            return s
+        }
+        
+        var isEffectivelyEmpty: Bool {
+            let nameEmpty = nameOfSection.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            let allItemsEmpty = items.allSatisfy { $0.isEffectivelyEmpty }
+            return nameEmpty && allItemsEmpty
+        }
+    }
+    
+    private struct DraftItem: Identifiable {
+        var id: UUID = UUID()
+        var itemNumber: Int = 0
+        var itemShortText: String = ""
+        var itemLongText: String = ""
+        
+        var itemNormalCheck: Bool = true
+        var textAlt1: String = ""
+        var textAlt2: String = ""
+        var choiceAlt1: Bool = true
+        
+        static func makeEmpty(itemNumber: Int) -> DraftItem {
+            var i = DraftItem()
+            i.itemNumber = itemNumber
+            return i
+        }
+        
+        var isEffectivelyEmpty: Bool {
+            itemShortText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            itemLongText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            textAlt1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            textAlt2.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+    }
+    
+    // MARK: - Focus types
+    
+    private enum FocusDraftField: Hashable {
+        case headerName(UUID)
+        case sectionName(UUID)
+        case itemShort(UUID)
+    }
+    
+    private enum FocusExistingField: Hashable {
+        case headerName(UUID)
+        case sectionName(UUID)
+        case itemShort(UUID)
     }
 }
-
-struct ChecklistSectionEditView: View {
-    @EnvironmentObject var active: activations
-    @Environment(\.modelContext) private var modelContext
     
-    var body: some View {
-        if let sSection = Binding($active.activeSection){
-            
-            Form {
-               
-                //Text("Section appears at number: \(sSection.orderNum.wrappedValue)")
-                //Spacer()
-                Text(" Section's name:")
-                TextField(text: sSection.nameOfSection, prompt: Text("Section Name")){
-                    Text("Section's Name:")
-                }
-                .padding(6) // Padding inside the border
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.gray, lineWidth: 1))
-                Picker("Color:", selection: sSection.fontColor) {
-                    ForEach(SectionColors.allCases) { color in
-                        Text(color.rawValue.capitalized)
-                        .tag(color)
-                    }
-                }
-            }
-            .onDisappear {
-                if sSection.nameOfSection.wrappedValue == "" {
-                    sSection.nameOfSection.wrappedValue = "Section"
-                }
-                try? modelContext.save() }
-        }
-        else{
-            Text("got error in Checklist Section Editor View")
-        }
+private extension ChecklistItem {
+    var isEffectivelyEmpty: Bool {
+        itemShortText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        itemLongText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        textAlt1.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+        textAlt2.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 }

@@ -17,7 +17,7 @@ struct NumberField: View {
         nf.locale = Locale.current
         return nf
     }()
-    
+    // To use this, pass "label:" and "inData:" (a Binding)
     let label: String
     @Binding var inData: Float
     @State var inString: String = ""

@@ -1597,59 +1597,99 @@ extension ActionRegistry {
                 ActionRegistry.logSimple("Sails curved", using: rt.context)
             }
         )
-
+        //**************************************
+        //Storm tactics                        *
+        //**************************************
+   
         reg.add(
             "A45",
             title: "Run off",
             group: .environment,
-            isVisible: {rt in stormyConditions(rt)},
-            handler: {rt in
+            isVisible: { rt in stormyConditions(rt) && propulsionIsSailOrMotorsail(rt) },
+            handler: { rt in
                 rt.instances.navStatus = .stormTactics
                 rt.instances.onCourse = false
                 rt.instances.currentTrip?.tripStatus = .interrupted
-                    ActionRegistry.logSimple("Trying to handle storm conditions by Running off, not on track anymore", using: rt.context)
+
+                ActionRegistry.logSimple("Storm conditions, alleviate by running off.", using: rt.context)
             }
         )
+
         reg.add(
             "A46",
             title: "Forereach",
             group: .environment,
-            isVisible: {rt in stormyConditions(rt)},
-            handler: {rt in
+            isVisible: { rt in stormyConditions(rt)  && propulsionIsSailOrMotorsail(rt) },
+            handler: { rt in
                 rt.instances.navStatus = .stormTactics
                 rt.instances.onCourse = false
                 rt.instances.currentTrip?.tripStatus = .interrupted
-                ActionRegistry.logSimple("Trying to handle storm conditions by Forereaching, not on track anymore", using: rt.context)
+
+                ActionRegistry.logSimple("Storm conditions, alleviate by forereaching.", using: rt.context)
             }
         )
+
         reg.add(
             "A47",
             title: "Drogue",
             group: .environment,
-            isVisible: {rt in stormyConditions(rt)},
-            handler: {rt in
+            isVisible: { rt in stormyConditions(rt) },
+            handler: { rt in
                 rt.instances.navStatus = .stormTactics
                 rt.instances.onCourse = false
                 rt.instances.currentTrip?.tripStatus = .interrupted
-                ActionRegistry.logSimple("Conditions required to deploy a drogue, not on track anymore", using: rt.context)
+
+                ActionRegistry.logSimple("Storm conditions, drogue deployed from stern.", using: rt.context)
             }
         )
+
         reg.add(
             "A48",
             title: "Sea anchor",
             group: .environment,
-            isVisible: {rt in stormyConditions(rt)},
-            handler: {rt in
+            isVisible: { rt in stormyConditions(rt) },
+            handler: { rt in
                 rt.instances.navStatus = .stormTactics
                 rt.instances.onCourse = false
                 rt.instances.currentTrip?.tripStatus = .interrupted
-                ActionRegistry.logSimple("Conditions required to deploy a sea anchor, not on track anymore", using: rt.context)
+
+                Task { @MainActor in
+                    // default = bow
+                    let deployment = await rt.context.promptSeaAnchorDeployment(default: .bow) ?? .bow
+                    let sideText = (deployment == .bow) ? "bow" : "stern"
+                    ActionRegistry.logSimple("Storm conditions, sea anchor deployed from \(sideText).", using: rt.context)
+                }
+            }
+        )
+        
+        reg.add(
+            "A51",
+            title: "Storm steering",
+            group: .navigation,
+            isVisible: { rt in stormyConditions(rt) || isDangerPresent(rt) },
+            handler: { rt in
+                Task { @MainActor in
+                    let current = rt.instances.steering
+                    let choice = await rt.context.promptSteering(default: current) ?? current
+
+                    rt.instances.steering = choice
+
+                    // If autopilot is chosen, include mode if available (your requested enhancement).
+                    if choice == .autopilot {
+                        let mode = rt.instances.autopilotMode
+                        if mode != .off {
+                            ActionRegistry.logSimple("Steering now with Autopilot (\(mode.displayString)).", using: rt.context)
+                        } else {
+                            ActionRegistry.logSimple("Steering now with Autopilot.", using: rt.context)
+                        }
+                    } else {
+                        ActionRegistry.logSimple("Steering now with \(choice.displayString).", using: rt.context)
+                    }
+                }
             }
         )
 
-        // TODO: use AWA, point of sail, storm danger flag
-
-        // MARK: - Final log / landmark / steering in storm A49..A51
+        // MARK: - Final log / landmark
 
         reg.add(
             "A49",
@@ -1684,9 +1724,7 @@ extension ActionRegistry {
 
         reg.add("A50", title: "Landmark",    group: .otherLog, isVisible: { rt in
             rt.instances.currentNavZone == NavZone.coastal })
-        reg.add("A51", title: "Storm steering", group: .navigation, isVisible: {rt in stormyConditions(rt)})
-
-        // TODO: wire these to appropriate sheets / logs
+        
 
         // MARK: - Emergency triggers E1..E4 (fixed bar)
 
@@ -1748,9 +1786,10 @@ extension ActionRegistry {
             systemImage: "exclamationmark.triangle",
             isVisible: { rt in rt.instances.currentTrip?.tripStatus == .underway || rt.instances.currentTrip?.tripStatus == .interrupted },
             handler: { rt in
-                // TODO: open danger selector, add to dangers list
+                rt.openDangerSheet(rt.variant)
             }
         )
+
 
         reg.add(
             "AF2",
@@ -1806,8 +1845,7 @@ extension ActionRegistry {
             systemImage: "engine.combustion.circle",
             isVisible: { rt in hasSeveralMotors(rt) },
             handler: { rt in
-                // TODO: show motor sheet, set Motor.state according to user
-                // log according to what changed
+                // This is handled by a sheet in logActionView
             }
         )
         reg.add(
@@ -1842,9 +1880,9 @@ extension ActionRegistry {
 
         reg.add(
             "AF4",
-            title: "Failure report",
+            title: "Failure",
             group: .incident,
-            systemImage: "exclamationmark.bubble",
+            systemImage: "exclamationmark.triangle.text.page",
             handler: { rt in
                 // Sheet-driven: presented from LogActionView
             }
@@ -1872,9 +1910,9 @@ extension ActionRegistry {
 
         reg.add(
             "AF7",
-            title: "Crew incident",
+            title: "Crew mishap",
             group: .incident,
-            systemImage: "person.fill.questionmark",
+            systemImage: "figure.fall",
             handler: { rt in
                 // TODO: open crew incident sheet; sheet writes log
             }
@@ -1882,7 +1920,7 @@ extension ActionRegistry {
 
         reg.add(
             "AF8",
-            title: "Run checklist",
+            title: "checklist",
             group: .checklist,
             systemImage: "checklist",
             handler: { rt in
@@ -1896,8 +1934,9 @@ extension ActionRegistry {
             title: "Weather report",
             group: .environment,
             systemImage: "cloud.sun",
+            isVisible: { rt in rt.instances.currentTrip?.tripStatus != TripStatus.completed},
             handler: { rt in
-                // TODO: open weather reporter; reporter updates Instances weather fields + log
+                //is handled by viewer and logs are made by the sheet
             }
         )
 

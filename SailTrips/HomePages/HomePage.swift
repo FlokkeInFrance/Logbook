@@ -10,35 +10,33 @@ import SwiftUI
 import SwiftData
 
 enum HomePageNavigation: Hashable {
-    case boatList
-    case boatDetail
-    case checklist
-    case runChecklist
+    case parameters
     case settings
     case beaufort
-    case crew
-    case maintenance
+    case boatList
+    case boatDetail
     case boatLog
+    case maintenance
+    case checklist
+    case runChecklist
+    case crew
     case inventory
     case locations
+    case cruise
     case tripdetail
     case tripCompanion
     case triplist
-    case cruise
+    case tripDetails
     case logbookManEntry
     case logFromInstances
-    case parameters
     case logView(tripID: UUID?)  // nil = all logs, non-nil = logs for that trip
-    case tripDetails
     case actionLog
 }
-
 
 struct HomePage: View {
     
     @Environment(\.modelContext) private var modelContext: ModelContext
     @State private var selectedBoat: Boat?
-    
     // FetchDescriptor for fetching boats sorted by status
     @State private var fetchDescriptor: FetchDescriptor<CruiseDataSchemaV1.Boat>
     @State var checklisthelper: Bool = false
@@ -54,8 +52,7 @@ struct HomePage: View {
     @State private var showCruiseMatchAlert = false
     @State private var detectedCruiseID: UUID?
     @State private var detectedCruiseTitle: String = ""
-
-
+    @State private var showChecklistPicker = false
 
     private var defaultTripID: UUID? {
         if let current = instances?.currentTrip?.id { return current }
@@ -162,7 +159,6 @@ struct HomePage: View {
                     onClose: { navPath.path.removeLast() }
                 )
             }
-
         default:
             Text("Unhandled destination: \(String(describing: homeNav))")
         }
@@ -179,10 +175,6 @@ struct HomePage: View {
     }
     
     var body: some View {
-        /*Button("Memos"){
-            showMementoSheet = true
-        }
-        .buttonStyle(.borderedProminent)*/
         
         NavigationStack(path: $navPath.path) {
             VStack(spacing: 20) {
@@ -229,12 +221,16 @@ struct HomePage: View {
                     .foregroundColor(.white)
                     .cornerRadius(10)
                 
-                NavigationLink("Run Checklists", value: HomePageNavigation.runChecklist)
-                    .frame(maxWidth: .infinity)
-                    .padding(10)
-                    .background(Color.blue)
-                    .foregroundColor(.white)
-                    .cornerRadius(10)
+                Button {
+                    showChecklistPicker = true
+                } label: {
+                    Text("Run Checklists")
+                        .frame(maxWidth: .infinity)
+                        .padding(10)
+                        .background(Color.blue)
+                        .foregroundColor(.white)
+                        .cornerRadius(10)
+                }
                 
                 NavigationLink("Boat Logbook", value: HomePageNavigation.boatLog)
                     .frame(maxWidth: .infinity)
@@ -275,18 +271,7 @@ struct HomePage: View {
                             .cornerRadius(10)
                     }
                 }
-                
 
-                
-                
-               /* if let instance = instances {
-                    if instance.currentTrip != nil {
-                        NavigationLink("Go back to current Trip",value: HomePageNavigation.tripCompanion)
-                    }
-                    else {
-                        NavigationLink("Start new Trip", value: HomePageNavigation.tripCompanion)
-                    }
-                }*/
             }
             .alert("Is trip part of Cruise?", isPresented: $showCruiseMatchAlert) {
                 Button("Yes") {
@@ -398,6 +383,13 @@ struct HomePage: View {
             .sheet(isPresented: $showMementoSheet) {
                 MementoSheetView()
             }
+            .sheet(isPresented: $showChecklistPicker) {
+                if let inst = instances {
+                    ChecklistPickerView(instances: inst)   // ✅ already contains its own NavigationStack
+                } else {
+                    Text("No Instances row.")
+                }
+            }
             .navigationDestination(for: HomePageNavigation.self) { homeNav in
                 destination(homeNav)
             }
@@ -417,6 +409,7 @@ struct HomePage: View {
                 newBoat.status = .selected
                 selectedBoat = newBoat
                 try modelContext.save()
+                fetchOrCreateInstances(for: newBoat)
                 navigateToBoatDetailsView(newBoat)
             } else {
                 selectedBoat = boats.first(where: { $0.status == .selected })
@@ -429,6 +422,7 @@ struct HomePage: View {
                         }
                     }
                     try? modelContext.save()
+                    fetchOrCreateInstances(for: firstSelectedBoat)
                 }
             }
         } catch {

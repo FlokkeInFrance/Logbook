@@ -85,7 +85,10 @@ struct InstancesView: View {
         // Sheets
         .sheet(isPresented: $showWeatherSheet) {
             NavigationStack {
-                WeatherView(instances: instances)
+                WeatherView(
+                    updateTripStartFields: true,
+                    ctx: nil,
+                    instances: instances)
             }
         }
         .sheet(isPresented: $showDangerSheet) {
@@ -253,7 +256,20 @@ struct InstancesView: View {
             } label: {
                 Label("Describe weather…", systemImage: "cloud.sun")
             }
-
+            HStack{
+                NumberField(label: "Pressure (\(settings.pressureUnit)): ", inData: $instances.pressure)
+                Button {
+                    Task { @MainActor in
+                        if let p = await PressureReader.readHpaOnce() {
+                            instances.pressure = p
+                            // If you want to log it as a modification:
+                            logHandler?.pressureChanged(to: p) // implement if you don’t have it yet
+                        }
+                    }
+                } label: {
+                    Label("Read pressure now", systemImage: "gauge")
+                }
+            }
             // Short direct controls that also log
             IntField(label: "TWS", inData: $instances.TWS)
                 .onChange(of: instances.TWS) { _, newVal in

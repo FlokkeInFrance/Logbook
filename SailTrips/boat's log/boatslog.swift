@@ -219,7 +219,7 @@ struct BoatLogListView: View {
                     currentY += textHeight + 5
 
                     // Draw pictures
-                    for pic in log.picture {
+                    for pic in log.pictures {
                         if let uiImage = pic.uiImage() {
                             let maxDim: CGFloat = 100
                             let aspect = uiImage.size.width / uiImage.size.height
@@ -284,7 +284,7 @@ struct BoatLogDetailView: View {
                 }
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 100))]) {
-                    ForEach(Array(log.picture.enumerated()), id: \.offset) { idx, pic in
+                    ForEach(Array(log.pictures.enumerated()), id: \.offset) { idx, pic in
                         if let ui = pic.uiImage() {
                             Image(uiImage: ui)
                                 .resizable()
@@ -294,7 +294,7 @@ struct BoatLogDetailView: View {
                                 .contextMenu {
                                     if canEdit {
                                         Button(role: .destructive) {
-                                            log.picture.remove(at: idx)
+                                            log.pictures.remove(at: idx)
                                             try? context.save()
                                         } label: {
                                             Label("Delete", systemImage: "trash")
@@ -317,7 +317,7 @@ struct BoatLogDetailView: View {
                             if let data = try? await selectedPhotoItem?.loadTransferable(type: Data.self),
                                let ui = UIImage(data: data) {
                                 let pic = Picture(uiImage: ui)
-                                log.picture.append(pic)
+                                log.pictures.append(pic)
                                 try? context.save()
                             }
                         }

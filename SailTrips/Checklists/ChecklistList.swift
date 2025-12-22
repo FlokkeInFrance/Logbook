@@ -3,6 +3,7 @@
 //  SailTrips
 //
 //  Created by jeroen kok on 01/04/2025.
+//  modified for editor V2 21/12/2005
 //
 
 import SwiftUI
@@ -10,63 +11,54 @@ import SwiftData
 import UniformTypeIdentifiers
 import Foundation
 
-enum ChecklistNav{
-    case detail
-    case content
-    case sectiondetail
-    case itemdetail
-}
-
 struct ChecklistList: View {
     @Bindable var currentBoat: Boat
-    
+
     @Query private var checklistHeaders: [ChecklistHeader]
     @State private var selectedChecklist: ChecklistHeader?
-    
+
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject var newNavPath: PathManager
-    @EnvironmentObject var active: activations
-    
+
     // MARK: – UI State
     @State private var showDeleteConfirmation = false
     @State private var showExportDialog = false
     @State private var showImportDialog = false
-    
-    // Temporary hold for the XML data to export
+
     @State private var exportData: Data?
-    
+
     var filteredChecklists: [ChecklistHeader] {
         checklistHeaders.filter {
             $0.boat.id == currentBoat.id || $0.forAllBoats
         }
     }
-    
+
     var body: some View {
-        Text("Checklists for: \(currentBoat.name)")
-            .font(.headline)
-        
-        List(filteredChecklists, selection: $selectedChecklist) { header in
-            Text(header.name.isEmpty ? "Untitled Checklist" : header.name)
-                .tag(header)
+        List(selection: $selectedChecklist) {
+            Section {
+                ForEach(filteredChecklists) { header in
+                    NavigationLink {
+                        ChecklistEditorV2Host(boat: currentBoat, existingHeader: header)
+                    } label: {
+                        Text(header.name.isEmpty ? "Untitled Checklist" : header.name)
+                    }
+                    .tag(header)
+                }
+            } header: {
+                Text("Checklists for: \(currentBoat.name)")
+                    .font(.headline)
+            }
         }
-        .environmentObject(active)
         .toolbar {
-            // ────────────────────────────
-            // Add
+            // Add (draft-first, no DB write)
             ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    let newHeader = ChecklistHeader(boat: currentBoat)
-                    newHeader.name = "New Checklist"
-                    modelContext.insert(newHeader)
-                    selectedChecklist = newHeader
-                    newNavPath.path.append(ChecklistNav.detail)
+                NavigationLink {
+                    ChecklistEditorV2Host(boat: currentBoat, existingHeader: nil)
                 } label: {
                     Image(systemName: "plus")
                 }
             }
-            
-            // ────────────────────────────
-            // Delete
+
+            // Delete (explicit, safe)
             ToolbarItem(placement: .navigationBarLeading) {
                 Button(role: .destructive) {
                     guard selectedChecklist != nil else { return }
@@ -84,30 +76,8 @@ struct ChecklistList: View {
                     Text("Are you sure you want to delete “\(selectedChecklist?.name ?? "")”?")
                 }
             }
-            
-            // ────────────────────────────
-            // Detail / View
-            ToolbarItem {
-                Menu {
-                    Button("Modify Checklist's header") {
-                        if selectedChecklist != nil {
-                            newNavPath.path.append(ChecklistNav.detail)
-                        }
-                    }
-                    Button("Edit content") {
-                        if selectedChecklist != nil {
-                            active.activeItem = nil
-                            active.activeSection = nil
-                            newNavPath.path.append(ChecklistNav.content)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                }
-            }
-            
-            // ────────────────────────────
-            // Export / Import submenu
+
+            // Export / Import submenu (unchanged)
             ToolbarItem(placement: .navigationBarTrailing) {
                 Menu {
                     Button("Export as XML…") {
@@ -123,18 +93,12 @@ struct ChecklistList: View {
                 }
             }
         }
-        // ────────────────────────────
-        // File exporter
         .fileExporter(
             isPresented: $showExportDialog,
             document: XMLFileDocument(data: exportData ?? Data()),
             contentType: .xml,
             defaultFilename: selectedChecklist?.name ?? "Checklist"
-        ) { result in
-            // handle success/failure if needed
-        }
-        // ────────────────────────────
-        // File importer
+        ) { _ in }
         .fileImporter(
             isPresented: $showImportDialog,
             allowedContentTypes: [.xml],
@@ -148,36 +112,22 @@ struct ChecklistList: View {
                 print("Import failed:", err)
             }
         }
-        // ────────────────────────────
-        // Navigation
-        .navigationDestination(for: ChecklistNav.self) { navVal in
-            switch navVal {
-            case .detail:
-                ChecklistHeaderDetailForm(inHeader: selectedChecklist!)
-            case .content:
-                ChecklistEditor(header: selectedChecklist!)
-            case .sectiondetail:
-                ChecklistSectionEditView()
-            case .itemdetail:
-                ChecklistItemDetailView()
-            }
-        }
+        .navigationTitle("Checklists")
     }
-    
+
     // MARK: – Actions
-    
+
     private func deleteSelectedChecklist() {
         guard let header = selectedChecklist else { return }
         modelContext.delete(header)
         try? modelContext.save()
         selectedChecklist = nil
     }
-    
+
     private func xmlString(for header: ChecklistHeader) -> String {
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         xml += "<Checklist name=\"\(header.name.escapedXML)\">\n"
-        
-        // sections in orderNum order
+
         for section in header.sections.sorted(by: { $0.orderNum < $1.orderNum }) {
             xml += "  <Section name=\"\(section.nameOfSection.escapedXML)\" order=\"\(section.orderNum)\" color=\"\(section.fontColor.rawValue)\" />\n"
             for item in section.items.sorted(by: { $0.itemNumber < $1.itemNumber }) {
@@ -187,9 +137,8 @@ struct ChecklistList: View {
         xml += "</Checklist>\n"
         return xml
     }
-    
+
     private func importChecklist(from url: URL) {
-        print ("data importer got to import \(url) ")
         guard let data = try? Data(contentsOf: url) else { return }
         let importer = ChecklistImporter(
             data: data,
@@ -294,7 +243,7 @@ class ChecklistImporter: NSObject, XMLParserDelegate {
     }
 }
 
-struct ChecklistHeaderDetailForm: View {
+/*struct ChecklistHeaderDetailForm: View {
     @Bindable var inHeader: ChecklistHeader
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -333,7 +282,7 @@ struct ChecklistHeaderDetailForm: View {
             }
         }
     }
-}
+}*/
 
 
 

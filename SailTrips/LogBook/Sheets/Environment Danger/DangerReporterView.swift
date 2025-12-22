@@ -12,6 +12,9 @@ struct DangerReporterView: View {
 
     /// Initial dangers (from `instances.environmentDangers`)
     private let initialDangers: [EnvironmentDangers]
+    /// Initial notes (from `instances.trafficDescription`)
+    private let initialNotes: String
+
     /// Callback when user validates
     let onComplete: (_ newDangers: [EnvironmentDangers], _ notes: String) -> Void
 
@@ -20,11 +23,12 @@ struct DangerReporterView: View {
 
     init(
         existing: [EnvironmentDangers],
+        existingNotes: String = "",
         onComplete: @escaping (_ newDangers: [EnvironmentDangers], _ notes: String) -> Void
     ) {
         self.initialDangers = existing
+        self.initialNotes = existingNotes
         self.onComplete = onComplete
-        // _selected and _notes will be initialized in .onAppear for safety
     }
 
     var body: some View {
@@ -53,15 +57,13 @@ struct DangerReporterView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
+                    Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Signal") {
                         let newArray: [EnvironmentDangers]
                         if selected.isEmpty {
-                            // If user unchecks everything, we treat this as "no specific dangers" → [.none]
+                            // If user unchecks everything, treat as "no specific dangers" → [.none]
                             newArray = [.none]
                         } else {
                             newArray = Array(selected).sorted { $0.displayName < $1.displayName }
@@ -72,9 +74,9 @@ struct DangerReporterView: View {
                 }
             }
             .onAppear {
-                // Initialize selection from existing dangers (ignore .none)
                 let active = initialDangers.filter { $0 != .none }
                 self.selected = Set(active)
+                self.notes = initialNotes
             }
         }
     }

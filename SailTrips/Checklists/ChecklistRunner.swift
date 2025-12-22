@@ -9,7 +9,6 @@ import SwiftUI
 import SwiftData
 import AVFoundation
 
-/*Add the following to Info.plist*/
 
 /// Modes in which the checklist can run
 enum ChecklistMode {
@@ -19,6 +18,7 @@ enum ChecklistMode {
 struct ChecklistRunnerView: View {
     @Bindable var header: ChecklistHeader
     @Bindable var instances: Instances
+    var onFinished: (() -> Void)? = nil
 
     @State private var mode: ChecklistMode
     @State private var currentSectionIndex: Int = 0
@@ -27,51 +27,34 @@ struct ChecklistRunnerView: View {
     @State private var selectedProblemItem: ChecklistItem?
     @State private var observationText: String = ""
     @State private var selectedImages: [UIImage] = []
-    @State private var showQuitDialog = false
+    @State private var runHadIssues: Bool = false
     
     @EnvironmentObject var active: activations
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     
-    init(header: ChecklistHeader, instances: Instances, mode: ChecklistMode) {
+    init(header: ChecklistHeader, instances: Instances, mode: ChecklistMode, onFinished: (() -> Void)? = nil) {
         self._header = .init(header)
         self._instances = .init(instances)
         self._mode = State(initialValue: mode)
+        self.onFinished = onFinished
     }
 
     var body: some View {
-        Group {
-            switch mode {
-            case .show:
-                showView
-            case .resume, .start:
-                runView
-            }
-        }
-        .onAppear(perform: setupMode)
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                if mode != .show {
-                    Button("Abort") { abortChecklist() }
-                }
-            }
-        }
-        .sheet(isPresented: $showProblemSheet) {
-            ProblemInputView(
-                item: selectedProblemItem,
-                observationText: $observationText,
-                images: $selectedImages,
-                onComplete: handleProblem)
-        }
-        .alert("Checklist Completed", isPresented: $showQuitDialog) {
-            Button("Quit") { finishChecklist() }
-            Button("Continue", role: .cancel) { mode = .show }
-        } message: {
-            Text("Would you like to quit the checklist?")
-        }
-    }
-
+             Group {
+                 if mode == .show { showView }
+                 else { runView }
+             }
+             .sheet(isPresented: $showProblemSheet) {
+                 ProblemInputView(
+                     item: selectedProblemItem,
+                     observationText: $observationText,
+                     images: $selectedImages,
+                     onComplete: handleProblem)
+             }
+         }
     /// MARK: - Subviews
+    ///
     private var showView: some View {
         List {
             ForEach(header.sections.sorted(by: { $0.orderNum < $1.orderNum })) { section in
@@ -117,6 +100,7 @@ struct ChecklistRunnerView: View {
         }
         .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
         .navigationTitle(header.name)
+        .onAppear { setupMode() }
         .overlay(
             Button(action: jumpToFirstIncomplete) {
                 Image(systemName: "arrow.up.to.line")
@@ -132,8 +116,10 @@ struct ChecklistRunnerView: View {
         switch mode {
         case .start:
             clearChecklist()
+            runHadIssues = false
             currentSectionIndex = 0; currentItemIndex = 0;active.lastNumberChecked = nil
         case .resume:
+            runHadIssues = header.sections.contains(where: { $0.items.contains(where: { $0.problem }) })
             locateFirstIncomplete()
         case .show:
             break
@@ -163,24 +149,19 @@ struct ChecklistRunnerView: View {
     }
 
     /// MARK: - Actions
-    private func handleCheck(item: ChecklistItem, withProblem: Bool) {
-        if let lastNumberChecked = active.lastNumberChecked {
-            if (item.itemNumber == 1 || item.itemNumber == lastNumberChecked+1) {
+    private func handleCheck(_ item: ChecklistItem, withProblem: Bool) {
+        guard mode != .show else { return }
+        if item.checked {
+            item.checked = false; item.problem = false
+        } else {
+            if item.itemNormalCheck && withProblem {
+                presentProblem(item: item)
+            } else {
                 item.checked = true
-                active.lastNumberChecked = item.itemNumber
-                if withProblem { item.problem = true }
-                logEntry(for: item)
-                advanceAfterChecking(item)
-            }
-        }
-        else
-        {
-            if item.itemNumber == 1
-            {
-                item.checked = true
-                if withProblem { item.problem = true }
-                active.lastNumberChecked = item.itemNumber
-                logEntry(for: item)
+                if withProblem {
+                    item.problem = true
+                   runHadIssues = true
+                }
                 advanceAfterChecking(item)
             }
         }
@@ -196,6 +177,7 @@ struct ChecklistRunnerView: View {
            let hasInfo = !text.trimmingCharacters(in: .whitespaces).isEmpty || !pictureData.isEmpty
            if hasInfo {
                item.checked = true; item.problem = true
+               runHadIssues = true
                let svc = ToService(boat: instances.selectedBoat)
                svc.observation = text
                if !pictureData.isEmpty {
@@ -210,7 +192,7 @@ struct ChecklistRunnerView: View {
                logEntry.entryText = "Executing checklist \(header.name), following problem was detected: \(text)"
                if let imgData = pictureData.first {
                    let pict: Picture = Picture(data: imgData)
-                   logEntry.picture.append(pict)
+                   logEntry.pictures.append(pict)
                }
                context.insert(logEntry)
            } else {
@@ -232,7 +214,8 @@ struct ChecklistRunnerView: View {
             currentSectionIndex += 1
             currentItemIndex = 0
         } else {
-            showQuitDialog = true
+            // End of last item in last section: auto-finish and exit.
+            finishChecklist()
         }
     }
 
@@ -244,42 +227,36 @@ struct ChecklistRunnerView: View {
         header.aborted = true
         header.latestRunDate = Date()
         saveContext()
-        dismiss()
-    }
+        if let onFinished { onFinished() } else { dismiss() }    }
 
     private func finishChecklist() {
         header.completed = true
         header.latestRunDate = Date()
+        
         if header.canBeLogged {
+            // Derive issues from both the run flag and persisted per-item problem state.
+            let hasIssues = runHadIssues || header.sections.contains(where: { $0.items.contains(where: { $0.problem }) })
+            let timeStr = DateFormatter.localizedString(from: Date(), dateStyle: .none, timeStyle: .short)
+            let text: String
+            if hasIssues {
+                text = "Checklist \"\(header.name)\" completed with issue(s) (see logbook), today at \(timeStr)."
+            } else {
+                text = "Checklist \"\(header.name)\" completed without issues today at \(timeStr)."
+            }
+
             if let trip = instances.currentTrip {
                 let entry = Logs(trip: trip)
-                entry.logEntry = "Checklist \(header.name) completed"
+                entry.logEntry = text
                 context.insert(entry)
             } else {
                 let entry = BoatsLog()
                 entry.boat = instances.selectedBoat
-                entry.entryText = "Checklist \(header.name) completed"
+                entry.entryText = text
                 context.insert(entry)
             }
         }
         saveContext()
-        dismiss()
-    }
-
-    private func logEntry(for item: ChecklistItem) {
-        guard header.canBeLogged else { return }
-        let message = item.problem ? "with problem at item \(item.itemNumber)" : "item \(item.itemNumber) checked"
-        if let trip = instances.currentTrip {
-            let entry = Logs(trip: trip)
-            entry.logEntry = "Checklist \(header.name): \(message)"
-            context.insert(entry)
-        } else {
-            let entry = BoatsLog()
-            entry.boat = instances.selectedBoat
-            entry.entryText = "Checklist \(header.name): \(message)"
-            context.insert(entry)
-        }
-        saveContext()
+        if let onFinished { onFinished() } else { dismiss() }
     }
 
     private func saveContext() {
@@ -363,6 +340,8 @@ struct SectionView: View {
         VStack(alignment: .leading) {
             Text(section.nameOfSection)
                 .font(.headline)
+                .foregroundColor(section.fontColor.swiftUIColor)
+                //.border(Color.blue,width: 2)
             ScrollViewReader { proxy in
                 ScrollView(.vertical) {
                     VStack(spacing: 16) {
@@ -385,10 +364,6 @@ struct SectionView: View {
         .padding()
     }
 }
-
-
-
-
 
 /// A simple UIViewControllerRepresentable that wraps UIImagePickerController
 /// to take photos (or pick from library, if you switch sourceType).
@@ -416,7 +391,6 @@ struct ImagePicker: UIViewControllerRepresentable {
         init(onImagePicked: @escaping (UIImage) -> Void) {
             self.onImagePicked = onImagePicked
         }
-
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey : Any]) {
             picker.dismiss(animated: true)
@@ -424,7 +398,6 @@ struct ImagePicker: UIViewControllerRepresentable {
                 onImagePicked(image)
             }
         }
-
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
             picker.dismiss(animated: true)
         }

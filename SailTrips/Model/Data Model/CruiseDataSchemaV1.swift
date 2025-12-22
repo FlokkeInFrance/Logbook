@@ -334,6 +334,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var Longitude: Double=0
         var RangeOfVisibility: Double=20 //given in nautical miles nm
         var LandmarkType: LandmarkCategory=LandmarkCategory.lighthouse
+        var pictures: [Picture] = []
         init (id: UUID=UUID()){
             self.id = id
         }
@@ -593,8 +594,8 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var alwaysShow: Bool = true
         var conditionalShow: NavStatus = NavStatus.none
         var canBeLogged: Bool = true
-        var latestRunDate: Date = Date()
-        var wait24Hours: Bool = true
+        var latestRunDate: Date = Date.distantPast
+        var wait24Hours: Bool = false
         var aborted: Bool = false
         var completed: Bool = false
         
@@ -647,7 +648,7 @@ enum CruiseDataSchemaV1: VersionedSchema {
         var boat: Boat?
         var dateOfEntry : Date = Date.now
         var entryText : String = ""
-        var picture : [Picture] = [] //a jpg or HEIF of issue
+        var pictures : [Picture] = [] //a jpg or HEIF of issue
         init (id: UUID=UUID()){
             self.id = id
         }

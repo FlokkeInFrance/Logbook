@@ -165,7 +165,7 @@ enum ActionIcon {
 }*/
 
 typealias ActionVisibilityPredicate = (ActionRuntime) -> Bool
-typealias ActionHandler = (ActionRuntime) -> Void
+typealias ActionHandler = @MainActor (ActionRuntime) -> Void
 
 struct ActionVariant: Identifiable {
 

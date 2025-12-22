@@ -35,6 +35,8 @@ struct LogActionView: View {
     let openDangerSheet: (ActionVariant) -> Void
     let onClose: () -> Void
     
+    // Mark: - Environment and swiftData
+    
     @Environment(\.modelContext) private var modelContext
     @Query var settings: [LogbookSettings]
     
@@ -98,7 +100,19 @@ struct LogActionView: View {
     @State private var crewSnapshot: Set<UUID> = []
     @State private var crewDraft: [CrewMember] = []
 
-    
+    // AF9 – Weather
+    @State private var showWeatherSheet = false
+    @State private var weatherSnapshot: WeatherSnapshot? = nil
+    @State private var seaAnchorPromptRequest: ActionChoicePromptRequest<SeaAnchorDeployment>?
+    @State private var steeringPromptRequest: ActionChoicePromptRequest<Steering>?
+    // AF8 – Checklist
+    @State private var showChecklistPicker = false
+    //AF1 Environment dangers spotted
+    @State private var showDangerReporterSheet = false
+    @State private var dangerSnapshot: [EnvironmentDangers] = [.none]
+    @State private var dangerNotesSnapshot: String = ""
+
+
     // MARK: - Init
     
     init(
@@ -202,7 +216,11 @@ struct LogActionView: View {
                     withAnimation { showBannerView = false }
                 }
             },
-            openDangerSheet: openDangerSheet,
+            openDangerSheet: { _ in
+                dangerSnapshot = instances.environmentDangers
+                dangerNotesSnapshot = instances.trafficDescription
+                showDangerReporterSheet = true
+            },
             presentTextPrompt: { request in
                 Task { @MainActor in textPromptRequest = request }
             },
@@ -221,7 +239,14 @@ struct LogActionView: View {
             nmeaSnapshot: {
                 // later: return nmeaAdapter.latestSnapshot
                 nil
+            },
+            presentSeaAnchorPrompt: { request in
+                Task { @MainActor in seaAnchorPromptRequest = request }
+            },
+            presentSteeringPrompt: { request in
+                Task { @MainActor in steeringPromptRequest = request }
             }
+
         )
     }
     //***************************
@@ -260,6 +285,12 @@ struct LogActionView: View {
                 AutopilotModeSheet(runtime: rt)
             }
         }
+        .sheet(item: $seaAnchorPromptRequest) { req in
+            ChoicePromptSheet(request: req)
+        }
+        .sheet(item: $steeringPromptRequest) { req in
+            ChoicePromptSheet(request: req)
+        }
         .sheet(isPresented: $showSailingSheet, onDismiss: {
             rederiveSituation()
         }) {
@@ -270,6 +301,7 @@ struct LogActionView: View {
         .sheet(item: $textPromptRequest) { request in
             SingleLineTextPromptSheet(request: request)
         }
+
         .sheet(isPresented: $showNMEATestSheet) {
             NMEATestSheet(boat: instances.selectedBoat)
         }
@@ -340,8 +372,35 @@ struct LogActionView: View {
                 CrewSelectorView(selectedMembers: $crewDraft) // your existing selector :contentReference[oaicite:9]{index=9}
             }
         }
+        
+        .sheet(isPresented: $showWeatherSheet, onDismiss: {
+            logWeatherChangesAfterDismiss()
+            rederiveSituation()
+        }) {
+            NavigationStack {
+                WeatherView(
+                    updateTripStartFields: false,
+                    ctx: actionContext,
+                    instances: instances
+                )
+            }
+        }
+        .sheet(isPresented: $showChecklistPicker, onDismiss: {
+            rederiveSituation()
+        }) {ChecklistPickerView(instances: instances)}
+        .sheet(isPresented: $showDangerReporterSheet, onDismiss: {
+            rederiveSituation()
+        }) {
+            DangerReporterView(
+                existing: instances.environmentDangers,
+                existingNotes: instances.trafficDescription
+                ) { newDangers, notes in
+                    applyEnvironmentDangerChanges(newDangers: newDangers, notes: notes)
+                }
+            }
 
     }
+    
     //**************************************
     //END OF BODY                          *
     //**************************************
@@ -374,7 +433,18 @@ struct LogActionView: View {
             showMooringPicker = true
             return
         }
+        
+        if variant.tag == "AF8" {
+            showChecklistPicker = true
+            return
+        }
 
+
+        if variant.tag == "AF9" {
+            weatherSnapshot = WeatherSnapshot(instances)
+            showWeatherSheet = true
+            return
+        }
 
         if variant.tag == "AF15x" {
             showNMEATestSheet = true
@@ -456,6 +526,7 @@ struct LogActionView: View {
         ]
 
         let needsSailingSheet = needsSailingSheetTags.contains(variant.tag)
+        let need = variant.impliesCourseChange
 
         // Special exception: A39 + close-hauled => just flip tack, no sheet
         if variant.tag == "A39",
@@ -469,7 +540,7 @@ struct LogActionView: View {
         variant.handler(rt)
 
         // 5. Show sailing sheet if needed
-        if needsSailingSheet {
+        if needsSailingSheet || need{
             sailingRuntime = rt
             showSailingSheet = true
         } else {
@@ -566,6 +637,91 @@ struct LogActionView: View {
         tankSheetOriginTag = nil
         tankSnapshot = [:]
     }
+    
+    // structure and func to handle weather data and logging
+    
+    private struct WeatherSnapshot: Equatable {
+        var pressure: Float
+        var tws: Int
+        var twd: Int
+        var aws: Int
+        var awa: Int
+        var windBft: Int
+        var turbulence: Int
+        var gustiness: Int
+        var visibility: String
+        var cloudiness: Int
+        var stateOfSky: String
+        var presenceOfCn: Bool
+        var precipitations: Precipitations
+        var severeWeather: SevereWeather
+        var airTemp: Int
+        var waterTemp: Int
+        var seaState: String
+
+        init(_ i: Instances) {
+            pressure = i.pressure
+            tws = i.TWS
+            twd = i.TWD
+            aws = i.AWS
+            awa = i.AWA
+            windBft = i.windDescription
+            turbulence = i.turbulence
+            gustiness = i.gustiness
+            visibility = i.visibility
+            cloudiness = i.cloudiness
+            stateOfSky = i.stateOfSky
+            presenceOfCn = i.presenceOfCn
+            precipitations = i.precipitations
+            severeWeather = i.severeWeather
+            airTemp = i.airTemperature
+            waterTemp = i.waterTemperature
+            seaState = i.seaState
+        }
+    }
+    
+    private func logWeatherChangesAfterDismiss() {
+        guard let trip = instances.currentTrip else { weatherSnapshot = nil; return }
+        guard trip.tripStatus != .completed else { weatherSnapshot = nil; return }
+        guard let before = weatherSnapshot else { return }
+
+        let after = WeatherSnapshot(instances)
+
+        var changes: [String] = []
+
+        func changed<T: Equatable>(_ a: T, _ b: T, _ label: String, _ fmt: (T) -> String = { "\($0)" }) {
+            guard a != b else { return }
+            changes.append("\(label) \(fmt(a)) → \(fmt(b))")
+        }
+
+        changed(before.pressure, after.pressure, "Pressure", { String(format: "%.0f hPa", $0) })
+        changed(before.windBft, after.windBft, "Wind", { "Bft \($0)" })
+        changed(before.tws, after.tws, "TWS", { "\($0) kn" })
+        changed(before.twd, after.twd, "TWD", { "\($0)°" })
+        changed(before.aws, after.aws, "AWS", { "\($0) kn" })
+        changed(before.awa, after.awa, "AWA", { "\($0)°" })
+        changed(before.gustiness, after.gustiness, "Gusts", { "+\($0) kn" })
+        changed(before.turbulence, after.turbulence, "Turbulence", { "\($0)°" })
+        changed(before.cloudiness, after.cloudiness, "Clouds", { "\($0)/8" })
+        changed(before.stateOfSky, after.stateOfSky, "Cloud type")
+        changed(before.presenceOfCn, after.presenceOfCn, "CB nearby", { $0 ? "yes" : "no" })
+        changed(before.precipitations, after.precipitations, "Precip", { $0.displayString })
+        changed(before.severeWeather, after.severeWeather, "Severe", { $0.displayString })
+        changed(before.visibility, after.visibility, "Visibility")
+        changed(before.airTemp, after.airTemp, "Air", { "\($0)°C" })
+        changed(before.waterTemp, after.waterTemp, "Water", { "\($0)°C" })
+        changed(before.seaState, after.seaState, "Sea")
+
+        guard !changes.isEmpty else { weatherSnapshot = nil; return }
+
+        ActionRegistry.logSimple(
+            "Weather update: " + changes.joined(separator: ", "),
+            using: actionContext
+        )
+
+        weatherSnapshot = nil
+    }
+
     
     //log crew changes in the trip table
     private func logCrewChangesAfterDismiss() {
@@ -878,8 +1034,76 @@ struct LogActionView: View {
         }
     }
     
-   
+    private func applyEnvironmentDangerChanges(newDangers: [EnvironmentDangers], notes: String) {
+        // Normalize BEFORE (ignore .none)
+        let beforeSet = Set(dangerSnapshot.filter { $0 != .none })
 
+        // Normalize AFTER (ignore .none)
+        let normalizedAfterSet: Set<EnvironmentDangers> = {
+            let cleaned = newDangers.filter { $0 != .none }
+            return Set(cleaned)
+        }()
+
+        let afterArray: [EnvironmentDangers] = {
+            if normalizedAfterSet.isEmpty { return [.none] }
+            return Array(normalizedAfterSet).sorted { $0.displayName < $1.displayName }
+        }()
+
+        // Apply to Instances (sheet maintains the array in Instances)
+        instances.environmentDangers = afterArray
+        instances.trafficDescription = notes
+
+        // Decide what changed
+        let afterSet = Set(afterArray.filter { $0 != .none })
+        let added = afterSet.subtracting(beforeSet)
+        let removed = beforeSet.subtracting(afterSet)
+
+        let notesChanged = (notes != dangerNotesSnapshot)
+
+        // If nothing changed (no array diff, no notes diff) → no log
+        if added.isEmpty, removed.isEmpty, !notesChanged {
+            return
+        }
+
+        // If user cleared all dangers (A19-equivalent) → log exactly like A19
+        if afterSet.isEmpty, !beforeSet.isEmpty {
+            ActionRegistry.logSimple("Dangers cleared.", using: actionContext)
+            return
+        }
+
+        // Otherwise log changes
+        func list(_ set: Set<EnvironmentDangers>) -> String {
+            set.map { $0.displayName }.sorted().joined(separator: ", ")
+        }
+
+        var parts: [String] = []
+
+        if beforeSet.isEmpty, !afterSet.isEmpty {
+            parts.append("Dangers spotted: \(list(afterSet)).")
+        } else {
+            if !added.isEmpty { parts.append("+\(list(added))") }
+            if !removed.isEmpty { parts.append("-\(list(removed))") }
+
+            if !parts.isEmpty {
+                parts.insert("Dangers updated:", at: 0)
+            } else {
+                // Only notes changed
+                parts.append("Dangers noted.")
+            }
+
+            if parts.last?.hasSuffix(".") == false {
+                // make a sentence if it’s a + / - list
+                parts = [parts[0] + " " + parts.dropFirst().joined(separator: " ") + "."]
+            }
+        }
+
+        if notesChanged, !notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("Notes: \(notes)")
+        }
+
+        ActionRegistry.logSimple(parts.joined(separator: " "), using: actionContext)
+    }
+    
     private func rederiveSituation() {
         let newID = deriveSituationID(for: instances)
         currentSituationID = newID
@@ -912,7 +1136,7 @@ struct LogActionView: View {
             }
         }
     }
-}
+} // End of LogActionView struct
 
 
 
